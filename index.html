@@ -1,0 +1,2400 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#14532d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/icon.svg">
+    <title>نظام إدارة مزارع الدواجن وتسمين الكتاكيت</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { cairo: ['Cairo', 'sans-serif'] },
+                    colors: {
+                        farmGreen: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; background-color: #f8fafc; }
+        .card-hover { transition: all 0.25s ease-in-out; }
+        .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.08); }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+    <!-- Supabase authentication gate -->
+    <div id="authGate" class="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-4">
+      <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-7 space-y-5">
+        <div class="text-center space-y-2"><div class="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center text-3xl"><i class="fa-solid fa-feather-pointed"></i></div><h2 class="text-xl font-black">إدارة مزارع الدواجن</h2><p class="text-sm text-slate-500">تسجيل الدخول بحسابك</p></div>
+        <form id="authForm" class="space-y-3">
+          <label class="block text-sm font-bold">البريد الإلكتروني</label><input id="authEmail" type="email" autocomplete="username" required class="w-full border rounded-xl p-3 text-left" dir="ltr" placeholder="name@example.com">
+          <label class="block text-sm font-bold">كلمة المرور</label><input id="authPassword" type="password" autocomplete="current-password" required class="w-full border rounded-xl p-3 text-left" dir="ltr" placeholder="••••••••">
+          <button id="authSubmit" type="submit" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl p-3 font-bold">تسجيل الدخول</button>
+        </form>
+        <p id="authMessage" role="status" class="text-sm text-center text-rose-600"></p>
+        <p id="cloudStatus" class="text-xs text-slate-500 leading-relaxed">يلزم تسجيل الدخول واتصال قاعدة البيانات السحابية.</p>
+      </div>
+    </div>
+
+    <header class="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-farmGreen-600 flex items-center justify-center text-white text-xl shadow-lg shadow-farmGreen-900/50">
+                    <i class="fa-solid fa-feather-pointed"></i>
+                </div>
+                <div>
+                    <h1 class="font-black text-base md:text-lg leading-tight tracking-wide">نظام إدارة مزارع التسمين</h1>
+                    <p class="text-[11px] text-slate-400 font-medium">التحكم الشامل والدورات المزارع والمصروفات</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button onclick="app.syncNow()" class="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold border border-emerald-600 transition" title="مزامنة البيانات الآن">
+                    <i class="fa-solid fa-cloud-arrow-up"></i><span>مزامنة</span>
+                </button>
+                <button onclick="app.signOut()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold border border-slate-700 transition">
+                    <i class="fa-solid fa-user-gear text-farmGreen-500"></i>
+                    <span id="currentUserName">المدير العام</span>
+                    <i class="fa-solid fa-right-from-bracket text-[10px] text-slate-400"></i>
+                </button>
+                <div id="btnCustomSections" onclick="app.openCustomSectionsModal()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 cursor-pointer transition" title="تعديل الأقسام والأيقونات">
+                    <i class="fa-solid fa-sliders text-xs"></i>
+                </div>
+                <div id="btnBackupRestore" onclick="app.openImportExportModal()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 cursor-pointer transition" title="استيراد وتصدير النسخ الاحتياطية">
+                    <i class="fa-solid fa-database text-xs"></i>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+
+        <!-- VIEW 1: MAIN DASHBOARD HUB -->
+        <div id="mainHubView" class="space-y-6">
+            <div class="flex justify-between items-center border-b border-slate-200/80 pb-3">
+                <div>
+                    <h2 class="text-xl font-extrabold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-grip text-farmGreen-600"></i> أقسام إدارة المزرعة
+                    </h2>
+                    <p class="text-xs text-slate-500">اختر القسم للتحكم المباشر والعمليات اليومية</p>
+                </div>
+                <div class="text-xs bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                    صلاحيات المدير متوفرة
+                </div>
+            </div>
+
+            <div id="sections2ColumnGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+                <!-- Dynamically Populated by JavaScript -->
+            </div>
+
+            <!-- BOTTOM STATS BANNER -->
+            <div class="bg-white border border-slate-200/90 p-5 rounded-3xl shadow-sm space-y-4">
+                <div class="flex flex-wrap justify-between items-center gap-3 border-b border-slate-100 pb-3">
+                    <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-farmGreen-600"></i> ملخص مؤشرات المزرعة للدورة المحددة
+                    </h3>
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs font-bold text-slate-500">اختر الدورة:</label>
+                        <select id="hubFlockFilter" onchange="app.onFlockFilterChange()" class="bg-slate-50 border border-slate-300 text-xs font-bold rounded-xl px-3 py-1.5 focus:outline-none focus:border-farmGreen-600">
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-slate-500 block">رصيد النقدية الابتدائي</span>
+                            <span id="statCashReserve" class="text-lg font-black text-indigo-700 mt-0.5 block">0 ج.م</span>
+                        </div>
+                        <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-base">
+                            <i class="fa-solid fa-vault"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-slate-500 block">الكتاكيت الحالية للدورة</span>
+                            <span id="statLiveCount" class="text-lg font-black text-slate-800 mt-0.5 block">0 طائر</span>
+                        </div>
+                        <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-base">
+                            <i class="fa-solid fa-egg"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-slate-500 block">إجمالي النافق</span>
+                            <span id="statMortalityCount" class="text-lg font-black text-rose-600 mt-0.5 block">0 طائر</span>
+                        </div>
+                        <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-base">
+                            <i class="fa-solid fa-skull-crossbones"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-slate-500 block">إجمالي المبيعات</span>
+                            <span id="statTotalSales" class="text-lg font-black text-emerald-700 mt-0.5 block">0 ج.م</span>
+                        </div>
+                        <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-base">
+                            <i class="fa-solid fa-money-bill-wave"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-slate-500 block">المصروفات والمشتريات</span>
+                            <span id="statTotalExpenses" class="text-lg font-black text-amber-700 mt-0.5 block">0 ج.م</span>
+                        </div>
+                        <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-base">
+                            <i class="fa-solid fa-file-invoice-dollar"></i>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                        <span class="text-[11px] font-bold text-slate-500 block">حرارة المزرعة المحددة</span>
+                        <div id="farmWeatherCards" class="mt-1 text-lg font-black text-rose-600">اختر دورة لعرض الطقس</div>
+                        <button onclick="app.refreshFarmWeather(true)" class="text-[10px] text-blue-700 underline mt-1">تحديث الحرارة</button>
+                    </div>
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                        <span class="text-[11px] font-bold text-slate-500 block">سعر كيلو اللحم الأبيض</span>
+                        <div id="poultryPriceCard" class="mt-1 text-lg font-black text-emerald-700">غير متاح حاليًا</div>
+                        <a href="https://elmorshdledwagn.com/" target="_blank" rel="noopener" class="text-[10px] text-blue-700 underline mt-1 inline-block">مصدر السعر: المرشد للدواجن</a>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+
+        <div id="insideSectionView" class="hidden space-y-6">
+            <div class="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <button onclick="app.backToMainHub()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-2xl font-black text-xs transition flex items-center gap-2">
+                        <i class="fa-solid fa-arrow-right"></i>
+                        <span>رجوع للقائمة الرئيسية</span>
+                    </button>
+                    <div class="h-6 w-[1px] bg-slate-200"></div>
+                    <div class="flex items-center gap-2">
+                        <span id="activeSectionIcon" class="text-farmGreen-600 text-lg"></span>
+                        <h2 id="activeSectionTitle" class="text-base font-black text-slate-800">اسم القسم</h2>
+                    </div>
+                </div>
+                <div id="sectionActionBtnContainer"></div>
+            </div>
+
+            <div class="bg-white rounded-3xl border border-slate-200 p-6 min-h-[400px]">
+                
+                <!-- 1. FARMS TAB -->
+                <div id="tab-farms" class="section-content hidden space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                        <p class="text-xs text-slate-500 font-bold">قائمة المزارع المسجلة بالعنابر والطاقة الاستيعابية</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="farmsListContainer"></div>
+                </div>
+
+                <!-- 2. FLOCKS TAB -->
+                <div id="tab-flocks" class="section-content hidden space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">اسم الدورة</th>
+                                    <th class="p-3">المزرعة والعنبر</th>
+                                    <th class="p-3">السلالة</th>
+                                    <th class="p-3">العدد الابتدائي</th>
+                                    <th class="p-3">إجمالي النافق</th>
+                                    <th class="p-3">العدد الحالي</th>
+                                    <th class="p-3">تاريخ البدء</th>
+                                    <th class="p-3">الحالة</th>
+                                    <th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="flocksTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. INVENTORY TAB -->
+                <div id="tab-inventory" class="section-content hidden space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">التاريخ</th><th class="p-3">المزرعة</th><th class="p-3">اسم الصنف</th><th class="p-3">الفئة</th><th class="p-3">الكمية</th><th class="p-3">الوحدة</th><th class="p-3">سعر الوحدة</th><th class="p-3">الإجمالي</th><th class="p-3">المورد</th><th class="p-3">السداد</th><th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventoryTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 4. DAILY LOGS TAB -->
+                <div id="tab-daily" class="section-content hidden space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">التاريخ</th>
+                                    <th class="p-3">الدورة</th>
+                                    <th class="p-3">العمر (يوم)</th>
+                                    <th class="p-3">النافق</th>
+                                    <th class="p-3">العدد المتبقي</th>
+                                    <th class="p-3">العلف (كجم)</th>
+                                    <th class="p-3">المياه (لتر)</th>
+                                    <th class="p-3">فترة التسجيل</th>
+                                    <th class="p-3">الأدوية</th>
+                                    <th class="p-3">متوسط الوزن (جم)</th>
+                                    <th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dailyTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 5. MEDICINES TAB -->
+                <div id="tab-medicines" class="section-content hidden space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">اسم العلاج / التحصين</th>
+                                    <th class="p-3">الدورة</th>
+                                    <th class="p-3">التاريخ</th>
+                                    <th class="p-3">الجرعة والطريقة</th>
+                                    <th class="p-3">التكلفة (ج.م)</th>
+                                    <th class="p-3 font-medium">ملاحظات</th>
+                                    <th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="medicinesTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 6. SALES TAB -->
+                <div id="tab-sales" class="section-content hidden space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">التاريخ</th>
+                                    <th class="p-3">الدورة</th>
+                                    <th class="p-3">الوزن القائم (كجم)</th>
+                                    <th class="p-3">الوزن الصافي (كجم)</th>
+                                    <th class="p-3">سعر الكيلو (ج.م)</th>
+                                    <th class="p-3">إجمالي القيمة</th>
+                                    <th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 7. PARTNERS TAB -->
+                <div id="tab-partners" class="section-content hidden space-y-6">
+                    <div class="flex flex-wrap justify-between items-center gap-3 bg-slate-100 p-3.5 rounded-2xl border border-slate-200">
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs font-bold text-slate-700">تصفية حسب الدورة:</label>
+                            <select id="partnerFlockSelect" onchange="app.renderPartnersTab()" class="bg-white border border-slate-300 text-xs font-bold rounded-xl px-3 py-2 focus:outline-none focus:border-farmGreen-600">
+                            </select>
+                        </div>
+                        <div id="flockStatusBadge" class="text-xs font-extrabold"></div>
+                    </div>
+
+                    <div class="bg-slate-900 text-white p-5 rounded-3xl flex flex-wrap justify-between items-center gap-4">
+                        <div>
+                            <span class="text-xs text-slate-400 font-bold block">الصافي التقديري المتاح للتوزيع للدورة الحالية</span>
+                            <span id="partnersNetProfitDisplay" class="text-3xl font-black text-emerald-400 mt-1 block">0 ج.م</span>
+                            <p id="partnerProfitFormulaDetails" class="text-[11px] text-slate-400 mt-1"></p>
+                        </div>
+                        <div class="flex flex-col gap-2 items-end">
+                            <button id="btnDistributeProfit" onclick="app.settleAndArchiveFlock()" class="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-black text-xs px-4 py-2.5 rounded-xl transition shadow-md flex items-center gap-2">
+                                <i class="fa-solid fa-check-double"></i>
+                                <span>تأكيد توزيع الأرباح وأرشفة الدورة</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="partnersCardsGrid"></div>
+
+                    <div class="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex justify-between items-center text-xs text-amber-900">
+                        <span class="font-bold"><i class="fa-solid fa-percent text-amber-600 ml-1"></i> مجموع النسب المئوية للشركاء: <strong id="totalPercentSum">100%</strong></span>
+                        <span id="percentValidationMsg" class="font-extrabold text-emerald-700"><i class="fa-solid fa-circle-check"></i> المجموع مكتمل 100%</span>
+                    </div>
+                </div>
+
+                <!-- 8. WORKERS TAB -->
+                <div id="tab-workers" class="section-content hidden space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">اسم العامل</th>
+                                    <th class="p-3">الوظيفة / المزرعة</th>
+                                    <th class="p-3">الراتب الشهري (ج.م)</th>
+                                    <th class="p-3">السُلف والخصومات</th>
+                                    <th class="p-3">الصافي المستحق</th>
+                                    <th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workersTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 9. EXPENSES TAB -->
+                <div id="tab-expenses" class="section-content hidden space-y-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">التاريخ</th>
+                                    <th class="p-3">الدورة</th>
+                                    <th class="p-3">نوع المصروف / البند</th>
+                                    <th class="p-3">المبلغ (ج.م)</th>
+                                    <th class="p-3">البيان والتفاصيل</th>
+                                    <th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expensesTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 10. USERS & PERMISSIONS TAB -->
+                <div id="tab-users" class="section-content hidden space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                        <h3 class="text-sm font-black text-slate-800">قائمة مستخدمي النظام والصلاحيات</h3>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-right">
+                            <thead class="bg-slate-100 text-slate-700 font-bold">
+                                <tr>
+                                    <th class="p-3 rounded-r-xl">اسم المستخدم</th>
+                                    <th class="p-3">رقم الهاتف</th>
+                                    <th class="p-3">الدور / الوظيفة</th>
+                                    <th class="p-3">نطاق الصلاحيات</th>
+                                    <th class="p-3 rounded-l-xl text-center">إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Flock Add Modal -->
+    <div id="flockModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-lg w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">إضافة دورة تسمين جديدة (بدء دورة)</h3>
+                <button onclick="app.closeModal('flockModal')" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveFlock(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">اسم الدورة</label>
+                    <input type="text" id="flockName" required placeholder="دورة صيف 2026" class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-farmGreen-600">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">المزرعة والعنبر</label>
+                        <select id="flockFarmSelect" required class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-farmGreen-600"></select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">اسم العنبر</label>
+                        <input type="text" id="flockBarnName" placeholder="عنبر 1" required class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-farmGreen-600">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">السلالة</label>
+                        <input type="text" id="flockBreed" placeholder="روص 308" required class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-farmGreen-600">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">العدد الابتدائي (عدد الكتاكيت)</label>
+                        <input type="number" id="flockInitialCount" required min="1" placeholder="10000" class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-farmGreen-600">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">تاريخ البدء</label>
+                        <input type="date" id="flockStartDate" required class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-farmGreen-600">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1 text-indigo-700">رصيد النقدية الابتدائي للدورة (ج.م)</label>
+                        <input type="number" id="flockInitialCash" min="0" placeholder="50000" class="w-full border border-slate-300 rounded-xl p-2.5 font-bold focus:outline-none focus:border-indigo-600">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('flockModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">بدء الدورة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Inventory Add Modal -->
+    <div id="inventoryModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">إضافة صنف للمخزن</h3>
+                <button onclick="app.closeModal('inventoryModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveInventoryItem(event)" class="space-y-3 text-xs max-h-[75vh] overflow-y-auto pr-1">
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block font-bold text-slate-700 mb-1">التاريخ</label><input type="date" id="invDate" required class="w-full border border-slate-300 rounded-xl p-2.5"></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">المزرعة</label><select id="invFarm" required onchange="app.updateInventoryFlocks()" class="w-full border border-slate-300 rounded-xl p-2.5"></select></div>
+                </div>
+                <div><label class="block font-bold text-slate-700 mb-1">الدورة المرتبطة بالمشتريات (لتحميل التكلفة عليها)</label><select id="invFlock" required class="w-full border border-slate-300 rounded-xl p-2.5"><option value="">اختر الدورة</option></select></div>
+                <div><label class="block font-bold text-slate-700 mb-1">نوع الصنف</label><select id="invCategory" required onchange="app.updateInventoryItemOptions()" class="w-full border border-slate-300 rounded-xl p-2.5"><option value="أعلاف">أعلاف</option><option value="جير حي">جير حي</option><option value="أدوية وتحضينات">الأدوية والتحصينات</option><option value="نشارة">النشارة</option><option value="غاز">الغاز</option><option value="أخرى">أخرى</option></select></div>
+                <div><label class="block font-bold text-slate-700 mb-1">اسم الصنف</label><select id="invNameSelect" required onchange="app.updateInventoryUnit()" class="w-full border border-slate-300 rounded-xl p-2.5"></select><input type="text" id="invMedicineName" placeholder="اكتب اسم الدواء أو التحصين، مثل أموكسيسيلين أو جامبورو" class="hidden mt-2 w-full border border-slate-300 rounded-xl p-2.5"><input type="text" id="invOtherName" placeholder="اكتب اسم الصنف الآخر" class="hidden mt-2 w-full border border-slate-300 rounded-xl p-2.5"></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block font-bold text-slate-700 mb-1">الكمية</label><input type="number" id="invQty" required min="0.01" step="any" value="1" oninput="app.updateInventoryTotal()" class="w-full border border-slate-300 rounded-xl p-2.5"></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">وحدة القياس</label><select id="invUnit" required class="w-full bg-slate-100 border border-slate-300 rounded-xl p-2.5 font-bold"></select></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block font-bold text-slate-700 mb-1">سعر الوحدة (ج.م)</label><input type="number" id="invUnitPrice" required min="0" step="0.01" value="0" oninput="app.updateInventoryTotal()" class="w-full border border-slate-300 rounded-xl p-2.5"></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">إجمالي الفاتورة (ج.م)</label><input type="number" id="invTotal" readonly class="w-full bg-slate-100 border border-slate-300 rounded-xl p-2.5 font-black"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block font-bold text-slate-700 mb-1">اسم المورد</label><input type="text" id="invSupplier" required placeholder="اسم المورد" class="w-full border border-slate-300 rounded-xl p-2.5"></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">طريقة السداد</label><select id="invPayment" required class="w-full border border-slate-300 rounded-xl p-2.5"><option value="كاش">كاش</option><option value="آجل">آجل</option></select></div>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t"><button type="button" onclick="app.closeModal('inventoryModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button><button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">حفظ الصنف والمصروف</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Medicines Add Modal -->
+    <div id="medicineModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">تسجيل علاج أو تحصينة بيطرية</h3>
+                <button onclick="app.closeModal('medicineModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveMedicineRecord(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">اسم الدواء / التحصينة</label>
+                    <input type="text" id="medName" required placeholder="تحصين هتشتر / مضاد حيوي" class="w-full border border-slate-300 rounded-xl p-2.5">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">اختر الدورة</label>
+                        <select id="medFlockSelect" required class="w-full border border-slate-300 rounded-xl p-2.5"></select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">التاريخ</label>
+                        <input type="date" id="medDate" required class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">الجرعة والطريقة</label>
+                        <input type="text" id="medDosage" placeholder="1 سم / لتر مياه" class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">التكلفة (ج.م)</label>
+                        <input type="number" id="medCost" min="0" value="0" class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">ملاحظات بيطرية</label>
+                    <input type="text" id="medNotes" placeholder="مثال: إضافة في اليوم الثامن" class="w-full border border-slate-300 rounded-xl p-2.5">
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('medicineModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">حفظ العلاج</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Sales Add Modal -->
+    <div id="salesModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-3xl shadow-xl max-w-lg w-full p-6 my-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">تسجيل فاتورة مبيعات طيور</h3>
+                <button type="button" onclick="app.closeModal('salesModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveSaleRecord(event)" class="space-y-3 text-xs">
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block font-bold text-slate-700 mb-1">المزرعة</label><select id="saleFarmSelect" required onchange="app.updateSaleFlocks()" class="w-full border border-slate-300 rounded-xl p-2.5"></select></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">الدورة</label><select id="saleFlockSelect" required class="w-full border border-slate-300 rounded-xl p-2.5"></select></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">تاريخ البيع</label><input type="date" id="saleDate" required class="w-full border border-slate-300 rounded-xl p-2.5"></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">سعر الكيلو (ج.م)</label><input type="number" id="salePriceKg" required min="0" step="0.01" oninput="app.calcSaleNet()" class="w-full border border-slate-300 rounded-xl p-2.5"></div>
+                </div>
+                <div class="border rounded-2xl p-3"><div class="flex justify-between items-center mb-2"><b>الأوزان الفارغة (كجم)</b><button type="button" onclick="app.addSaleWeightRow('tare')" class="bg-slate-100 rounded-lg px-3 py-2 font-bold">+ إضافة وزن فارغ</button></div><div id="saleTareRows" class="space-y-2"></div><div class="text-left font-bold mt-2">إجمالي الوزن الفارغ: <span id="saleTareSum">0</span> كجم</div></div>
+                <div class="border rounded-2xl p-3"><div class="flex justify-between items-center mb-2"><b>الأوزان القائمة (كجم)</b><button type="button" onclick="app.addSaleWeightRow('gross')" class="bg-slate-100 rounded-lg px-3 py-2 font-bold">+ إضافة وزن قائم</button></div><div id="saleGrossRows" class="space-y-2"></div><div class="text-left font-bold mt-2">إجمالي الوزن القائم: <span id="saleGrossSum">0</span> كجم</div></div>
+                <div class="grid grid-cols-2 gap-3"><div class="bg-slate-50 p-3 rounded-xl font-bold">الوزن الصافي: <span id="saleNet">0</span> كجم</div><div class="bg-emerald-50 p-3 rounded-xl font-bold text-emerald-900">إجمالي الفاتورة: <span id="saleTotalCalc">0 ج.م</span></div></div>
+                <div class="flex justify-end gap-2 pt-3 border-t"><button type="button" onclick="app.closeModal('salesModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button><button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">تسجيل البيع</button></div>
+            </form>
+        </div>
+    </div>
+    </div>
+
+    <!-- Workers Add Modal -->
+    <div id="workerModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">إضافة عامل جديد</h3>
+                <button onclick="app.closeModal('workerModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveWorker(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">اسم العامل بالكامل</label>
+                    <input type="text" id="workerName" required placeholder="محمود إبراهيم" class="w-full border border-slate-300 rounded-xl p-2.5">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">الوظيفة / الدور</label>
+                        <input type="text" id="workerRole" placeholder="مشرف عنبر / عامل نظافة" class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">الراتب الشهري (ج.م)</label>
+                        <input type="number" id="workerSalary" required min="0" value="3000" class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">إجمالي السُلف والخصومات</label>
+                        <input type="number" id="workerAdvance" min="0" value="0" class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">رقم الهاتف</label>
+                        <input type="text" id="workerPhone" placeholder="012..." class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('workerModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">حفظ بيانات العامل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Expenses Add Modal -->
+    <div id="expenseModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">تسجيل مصروف جديد</h3>
+                <button onclick="app.closeModal('expenseModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveExpense(event)" class="space-y-3 text-xs">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">اختر الدورة</label>
+                        <select id="expFlockSelect" required class="w-full border border-slate-300 rounded-xl p-2.5"></select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">التاريخ</label>
+                        <input type="date" id="expDate" required class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">بند المصروف</label>
+                        <select id="expCategory" class="w-full border border-slate-300 rounded-xl p-2.5">
+                            <option value="مشتريات أعلاف">مشتريات أعلاف</option>
+                            <option value="شراء كتاكيت">شراء كتاكيت</option>
+                            <option value="غاز وتدفئة">غاز وتدفئة</option>
+                            <option value="كهرباء ومياه">كهرباء ومياه</option>
+                            <option value="صيانة ومعدات">صيانة ومعدات</option>
+                            <option value="مصاريف نثيرة">مصاريف نثيرة</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">المبلغ (ج.م)</label>
+                        <input type="number" id="expAmount" required min="1" class="w-full border border-slate-300 rounded-xl p-2.5 font-bold">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">البيان والشرح</label>
+                    <input type="text" id="expDesc" placeholder="شراء علف أو سداد قيمة غاز" class="w-full border border-slate-300 rounded-xl p-2.5">
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('expenseModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">حفظ المصروف</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Farm Add Modal -->
+    <div id="farmModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">إضافة مزرعة جديدة</h3>
+                <button onclick="app.closeModal('farmModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveFarm(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">اسم المزرعة</label>
+                    <input type="text" id="farmName" required placeholder="مزرعة السلام" class="w-full border border-slate-300 rounded-xl p-2.5">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">الموقع / العنوان</label>
+                    <input type="text" id="farmLocation" placeholder="الشرقية" class="w-full border border-slate-300 rounded-xl p-2.5">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">أسماء العنابر (مفصولة بفصلة)</label>
+                    <input type="text" id="farmBarns" placeholder="عنبر 1, عنبر 2" class="w-full border border-slate-300 rounded-xl p-2.5">
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('farmModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">حفظ المزرعة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Daily Log Add Modal -->
+    <div id="dailyModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">تسجيل بيانات يومية</h3>
+                <button onclick="app.closeModal('dailyModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveDailyLog(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">اختر الدورة</label>
+                    <select id="dlFlockSelect" required onchange="app.updateDailyEstimates()" class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-farmGreen-600"></select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">التاريخ</label>
+                        <input type="date" id="dlDate" required onchange="app.updateDailyEstimates()" class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">العمر بالليالي (يوم)</label>
+                        <input type="number" id="dlAge" required min="1" oninput="app.updateDailyEstimates()" class="w-full border border-slate-300 rounded-xl p-2.5 focus:outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1 text-rose-600">النافق اليومي</label>
+                        <input type="number" id="dlMortality" min="0" value="0" required oninput="app.updateDailyEstimates()" class="w-full border border-slate-300 rounded-xl p-2.5 font-bold">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">العلف (كجم)</label>
+                        <input type="number" id="dlFeed" min="0" value="0" required class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">الوزن (جم)</label>
+                        <input type="number" id="dlWeight" min="0" value="0" required class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="block font-bold text-slate-700 mb-1">المياه المستهلكة (لتر)</label><input type="number" id="dlWater" min="0" value="0" step="any" required class="w-full border border-slate-300 rounded-xl p-2.5"></div>
+                    <div class="rounded-xl border border-slate-200 p-2.5"><label class="block font-bold text-slate-700 mb-1">إجمالي ساعات الأدوية اليوم</label><div id="dlTotalMedicineHours" class="font-black text-blue-800">0 ساعة</div><p class="text-[10px] text-slate-500">تُجمع ساعات كل دواء على حدة؛ مثال: دواء 12 ساعة + دواء 12 ساعة = 24 ساعة.</p></div>
+                </div>
+                <div class="rounded-2xl bg-blue-50 border border-blue-100 p-3 space-y-1">
+                    <div class="font-black text-blue-900">تقدير الاستهلاك المتوقع للفترة المحددة</div>
+                    <div id="dlRemainingPreview" class="text-slate-700">الكتاكيت المتبقية بعد النافق: —</div>
+                    <div id="dlFeedEstimate" class="text-slate-700">العلف المتوقع: —</div>
+                    <div id="dlWaterEstimate" class="text-slate-700">المياه المتوقعة: —</div>
+                    <div id="dlWeightEstimate" class="text-slate-700">وزن الطائر والوزن القائم المتوقعان: —</div>
+                    <p class="text-[10px] text-slate-500">التقدير استرشادي ويعتمد على سجلات الدورة السابقة/السابقة للأيام القريبة، ومعدل ماء إلى علف 1.6–1.8 لتر/كجم كمرجع عند نحو 21°م. راجع الاستهلاك الفعلي ودرجة الحرارة.</p>
+                </div>
+                <div class="rounded-2xl border border-slate-200 p-3 space-y-2">
+                    <div class="flex items-center justify-between"><label class="font-black text-slate-800">الأدوية والتحصينات المستخدمة اليوم</label><button type="button" onclick="app.addDailyMedicineRow()" class="bg-blue-100 text-blue-800 px-3 py-1.5 rounded-lg font-bold">+ إضافة دواء</button></div>
+                    <div id="dailyMedicineRows" class="space-y-2"></div>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('dailyModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">حفظ السجل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Partner Share Settings Modal -->
+    <div id="partnerModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">تعديل أسماء ونسب الشركاء الأربعة</h3>
+                <button onclick="app.closeModal('partnerModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.savePartnersData(event)" class="space-y-3 text-xs">
+                <div id="partnerFormFields" class="space-y-2"></div>
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('partnerModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">حفظ النسب</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Add Modal -->
+    <div id="userModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-lg w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">إضافة مستخدم وتحديد الصلاحيات</h3>
+                <button onclick="app.closeModal('userModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="app.saveUser(event)" class="space-y-3 text-xs">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">الاسم بالكامل</label>
+                        <input type="text" id="userNameInput" required placeholder="أحمد علي" class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">رقم الهاتف</label>
+                        <input type="text" id="userPhoneInput" required placeholder="010..." class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">نوع دور المستخدم</label>
+                        <select id="userRoleSelect" class="w-full border border-slate-300 rounded-xl p-2.5 font-bold">
+                            <option value="manager">مدير عنبر / مشرف</option>
+                            <option value="deputy">نائب مدير (مزرعة واحدة)</option>
+                            <option value="worker">عامل مزرعة</option>
+                            <option value="admin">مدير عام (صلاحيات كاملة)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">كلمة المرور</label>
+                        <input type="password" id="userPassInput" required class="w-full border border-slate-300 rounded-xl p-2.5">
+                    </div>
+                </div>
+
+                <div id="deputyFarmWrap" class="hidden">
+                    <label class="block font-bold text-slate-700 mb-1">المزرعة المخصصة لنائب المدير</label>
+                    <select id="deputyFarmSelect" class="w-full border border-slate-300 rounded-xl p-2.5 font-bold"></select>
+                    <p class="text-slate-500 mt-1">نائب المدير تُحدد صلاحياته لهذه المزرعة فقط.</p>
+                </div>
+                <div class="border-t border-slate-100 pt-3">
+                    <h4 class="font-bold text-slate-800 mb-2">تحديد الصلاحيات للأقسام:</h4>
+                    <div id="permissionsListControls" class="space-y-2 max-h-48 overflow-y-auto p-1 bg-slate-50 rounded-2xl border border-slate-200"></div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="app.closeModal('userModal')" class="bg-slate-100 px-4 py-2 rounded-xl">إلغاء</button>
+                    <button type="submit" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold">إضافة المستخدم</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom System Dialog Modal (Replaces alert) -->
+    <div id="dialogModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-sm w-full p-5 text-center space-y-4">
+            <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 mx-auto flex items-center justify-center text-xl">
+                <i class="fa-solid fa-circle-info"></i>
+            </div>
+            <h3 id="dialogTitle" class="font-extrabold text-sm text-slate-800">تنبيه النظام</h3>
+            <p id="dialogMessage" class="text-xs text-slate-600 font-medium leading-relaxed"></p>
+            <button onclick="app.closeModal('dialogModal')" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs py-2.5 rounded-xl transition">حسناً</button>
+        </div>
+    </div>
+
+    <!-- Switch User Modal -->
+    <div id="userSwitchModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-sm w-full p-6">
+            <div class="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+                <h3 class="text-sm font-bold text-slate-800">تبديل حساب المستخدم الحالي</h3>
+                <button onclick="app.closeModal('userSwitchModal')" class="text-slate-400 text-lg font-bold">&times;</button>
+            </div>
+            <div id="usersSwitchList" class="space-y-2 my-3"></div>
+        </div>
+    </div>
+
+    <!-- Edit Sections & Icons Modal -->
+    <div id="customSectionsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-2xl w-full p-6">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">محرر المسميات والأيقونات للأقسام الرئيسية</h3>
+                <button onclick="app.closeModal('customSectionsModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <div id="editableSectionsList" class="space-y-3 max-h-96 overflow-y-auto p-1"></div>
+            <div class="flex justify-between items-center pt-4 border-t mt-3">
+                <button onclick="app.resetSectionsToDefault()" class="text-rose-600 text-xs font-bold hover:underline">إعادة التعيين للافتراضي</button>
+                <button onclick="app.closeModal('customSectionsModal')" class="bg-farmGreen-600 text-white px-5 py-2 rounded-xl font-bold text-xs">تم الحفظ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import / Export Modal -->
+    <div id="importExportModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl max-w-md w-full p-6 text-xs">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800">استيراد وتصدير قاعدة البيانات</h3>
+                <button onclick="app.closeModal('importExportModal')" class="text-slate-400 text-xl font-bold">&times;</button>
+            </div>
+            <div class="space-y-4">
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-2">
+                    <i class="fa-solid fa-file-export text-3xl text-farmGreen-600"></i>
+                    <h4 class="font-bold text-slate-800">حفظ نسخة احتياطية (تصدير)</h4>
+                    <p class="text-[11px] text-slate-500">قم بتنزيل كافة بياناتك وحساباتك كملف احتياطي منظم</p>
+                    <button onclick="app.exportDataJSON()" class="bg-farmGreen-600 text-white px-4 py-2 rounded-xl font-bold">تصدير الملف الآن</button>
+                </div>
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-2">
+                    <i class="fa-solid fa-file-import text-3xl text-indigo-600"></i>
+                    <h4 class="font-bold text-slate-800">استرجاع بيانات (استيراد)</h4>
+                    <input type="file" id="importFileInput" accept=".json" class="block w-full text-slate-500 text-[11px] file:mr-4 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <button onclick="app.importDataJSON()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">استيراد وقراءة البيانات</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Public publishable key only; never place a Supabase service-role key in browser code.
+        const SUPABASE_URL = 'https://gsawzucehxvffecavevl.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_t3Faz-aNis7goP38u0XtdQ_3MjnwZ4I';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let authenticatedProfile = null;
+        let cloudSyncTimer = null;
+        let cloudFarmMap = new Map();
+        let cloudRealtimeChannel = null;
+        let cloudRealtimeReloadTimer = null;
+        let cloudIsLoading = false;
+
+        async function performLogin(email, password) {
+          const msg = document.getElementById('authMessage');
+          const btn = document.getElementById('authSubmit');
+          btn.disabled = true; btn.textContent = 'جارٍ تسجيل الدخول…'; msg.textContent = '';
+          try {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            const { data: profile, error: profileError } = await supabaseClient.from('profiles').select('id,full_name,role,farm_id').eq('id', data.user.id).single();
+            if (profileError || !profile) throw new Error('تم الدخول لكن لم يُعثر على ملف المستخدم في جدول profiles. راجع إعداد المستخدم وصلاحيات الجدول.');
+            authenticatedProfile = profile;
+            document.getElementById('authGate').classList.add('hidden');
+            if (window.app) window.app.applyAuthenticatedProfile(profile);
+          } catch (e) {
+            msg.textContent = e.message || 'تعذر تسجيل الدخول. تحقق من البريد وكلمة المرور.';
+            await supabaseClient.auth.signOut();
+          } finally { btn.disabled = false; btn.textContent = 'تسجيل الدخول'; }
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+          document.getElementById('authForm').addEventListener('submit', e => { e.preventDefault(); performLogin(document.getElementById('authEmail').value.trim(), document.getElementById('authPassword').value); });
+          supabaseClient.auth.getSession().then(async ({data}) => {
+            if (!data.session) return;
+            const {data: profile} = await supabaseClient.from('profiles').select('id,full_name,role,farm_id').eq('id', data.session.user.id).single();
+            if (profile) { authenticatedProfile = profile; document.getElementById('authGate').classList.add('hidden'); if (window.app) window.app.applyAuthenticatedProfile(profile); }
+          });
+        });
+
+        class PoultryFarmApp {
+            constructor() {
+                this.defaultSections = [
+                    { id: 'farms', title: 'المزارع والعنابر', icon: 'fa-warehouse', desc: 'إدارة وتوزيع العنابر والطاقة الاستيعابية والحذف', addBtnLabel: 'إضافة مزرعة', addModalId: 'farmModal' },
+                    { id: 'flocks', title: 'الدورات والتشغيل', icon: 'fa-rotate', desc: 'تسكين الكتاكيت ومتابعة الأعداد الحالية', addBtnLabel: 'دورة جديدة', addModalId: 'flockModal' },
+                    { id: 'inventory', title: 'المخزن والخامات', icon: 'fa-boxes-stacked', desc: 'متابعة الأعلاف والغاز والمستلزمات', addBtnLabel: 'إضافة صنف', addModalId: 'inventoryModal' },
+                    { id: 'daily', title: 'التسجيل اليومي', icon: 'fa-calendar-day', desc: 'تسجيل النافق والأوزان والعلف اليومي', addBtnLabel: 'تسجيل يومية', addModalId: 'dailyModal' },
+                    { id: 'medicines', title: 'الأدوية والتحصين', icon: 'fa-prescription-bottle-medical', desc: 'جدولة التحصينات والعلاجات البيطرية', addBtnLabel: 'تسجيل علاج', addModalId: 'medicineModal' },
+                    { id: 'sales', title: 'المبيعات والأوزان', icon: 'fa-cash-register', desc: 'حساب القائم والتصفية وسعر اليوم', addBtnLabel: 'تسجيل بيع', addModalId: 'salesModal' },
+                    { id: 'partners', title: 'توزيع الأرباح والشركاء', icon: 'fa-handshake', desc: 'حساب وتوزيع صافي الأرباح على 4 شركاء بنسب محدودة', addBtnLabel: 'تعديل نسب الشركاء', addModalId: 'partnerModal' },
+                    { id: 'workers', title: 'العمالة والرواتب', icon: 'fa-users', desc: 'شؤون العاملين والسلفيات والرواتب', addBtnLabel: 'إضافة عامل', addModalId: 'workerModal' },
+                    { id: 'expenses', title: 'المصروفات والمشتريات', icon: 'fa-wallet', desc: 'المصاريف التشغيلية وفواتير الموردين', addBtnLabel: 'تسجيل مصروف', addModalId: 'expenseModal' },
+                    { id: 'users', title: 'المستخدمين والصلاحيات', icon: 'fa-user-shield', desc: 'إدارة أطقم العمل وتحديد صلاحياتهم بالكامل', addBtnLabel: 'إضافة مستخدم جديد', addModalId: 'userModal' }
+                ];
+
+                this.state = {
+                    sections: JSON.parse(JSON.stringify(this.defaultSections)),
+                    users: [
+                        { 
+                            id: 'u_admin', 
+                            name: 'المدير العام', 
+                            phone: '01000000000', 
+                            role: 'admin', 
+                            pass: 'admin',
+                            permissions: { all: 'full' }
+                        }
+                    ],
+                    currentUser: null,
+                    farms: [
+                        { id: 'f1', name: 'مزرعة النور الأولى', location: 'الشرقية', barns: ['عنبر 1', 'عنبر 2'] },
+                        { id: 'f2', name: 'مزرعة الأمل الثانية', location: 'الدقهلية', barns: ['عنبر أ', 'عنبر ب'] }
+                    ],
+                    flocks: [{ id: 'fl1', name: 'دورة صيف 2026', farmId: 'f1', barnName: 'عنبر 1', breed: 'روص 308', initialCount: 10000, initialCash: 50000, startDate: '2026-05-01', status: 'نشطة' }],
+                    inventory: [
+                        { id: 'inv1', name: 'علف بادي 23%', category: 'أعلاف', qty: 150, unit: 'شكارة', unitPrice: 650 },
+                        { id: 'inv2', name: 'غاز تدفئة', category: 'غاز ووقود', qty: 12, unit: 'إسطوانة', unitPrice: 220 }
+                    ],
+                    dailyLogs: [
+                        { id: 'dl1', flockId: 'fl1', date: '2026-05-02', age: 2, mortality: 15, feed: 150, weight: 60 },
+                        { id: 'dl2', flockId: 'fl1', date: '2026-05-03', age: 3, mortality: 10, feed: 180, weight: 75 }
+                    ],
+                    medicines: [
+                        { id: 'med1', flockId: 'fl1', name: 'تحصين هتشتر B1', date: '2026-05-07', dosage: 'قطرة بالعين', cost: 1200, notes: 'تحصين عمر 7 أيام' }
+                    ],
+                    sales: [{ id: 's1', flockId: 'fl1', date: '2026-06-01', pricePerKg: 85, grossWeight: 3000, tareWeight: 200, netWeight: 2800, totalEGP: 238000 }],
+                    workers: [
+                        { id: 'w1', name: 'محمد صابر', role: 'مشرف عنبر', salary: 4500, advance: 500, phone: '01122334455' }
+                    ],
+                    expenses: [{ id: 'ex1', flockId: 'fl1', category: 'مشتريات أعلاف', farmId: 'f1', amount: 48000, date: '2026-05-01', description: 'شراء 100 شكارة علف' }],
+                    partners: [
+                        { id: 1, name: 'الشريك الأول', percent: 25 },
+                        { id: 2, name: 'الشريك الثاني', percent: 25 },
+                        { id: 3, name: 'الشريك الثالث', percent: 25 },
+                        { id: 4, name: 'الشريك الرابع', percent: 25 }
+                    ]
+                };
+
+                this.activeSectionId = null;
+                this.selectedFlockId = 'all';
+                this.loadFromStorage();
+                this.currentUser = null;
+                this.init();
+                setTimeout(() => { if (!this.activeSectionId) { this.refreshFarmWeather(false); this.refreshPoultryPrice(false); } }, 1200);
+                setInterval(() => { if (!this.activeSectionId) { this.refreshFarmWeather(true); this.refreshPoultryPrice(true); } }, 30*60*1000);
+            }
+
+            loadFromStorage() {
+                const saved = localStorage.getItem('poultry_v5_data');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        this.state = { ...this.state, ...parsed };
+                        if (!this.state.partners || this.state.partners.length !== 4) {
+                            this.state.partners = [
+                                { id: 1, name: 'الشريك الأول', percent: 25 },
+                                { id: 2, name: 'الشريك الثاني', percent: 25 },
+                                { id: 3, name: 'الشريك الثالث', percent: 25 },
+                                { id: 4, name: 'الشريك الرابع', percent: 25 }
+                            ];
+                        }
+                    } catch (e) { console.error('Error loading data', e); }
+                }
+            }
+
+            saveToStorage() {
+                localStorage.setItem('poultry_v5_data', JSON.stringify(this.state));
+                this.renderAll();
+                if (authenticatedProfile && this.currentUser && !cloudIsLoading) {
+                    clearTimeout(cloudSyncTimer);
+                    this.setCloudStatus('تم الحفظ على الجهاز؛ جارٍ تجهيز المزامنة…');
+                    cloudSyncTimer = setTimeout(() => this.saveCloudState().catch(e => this.setCloudStatus('فشل الحفظ السحابي: ' + (e.message || e))), 700);
+                }
+            }
+
+            setCloudStatus(message) {
+                const el = document.getElementById('cloudStatus');
+                if (el) el.textContent = message;
+                let badge = document.getElementById('cloudStatusBar');
+                if (!badge) {
+                    badge = document.createElement('div');
+                    badge.id = 'cloudStatusBar';
+                    badge.className = 'mx-auto max-w-7xl px-4 py-1 text-xs bg-slate-800 text-slate-200';
+                    const header = document.querySelector('header');
+                    if (header) header.insertAdjacentElement('afterend', badge);
+                }
+                if (badge) badge.textContent = 'حالة السحابة: ' + message;
+            }
+
+            async syncNow() {
+                // Recover an existing Supabase session before deciding the user is signed out.
+                try {
+                    if (!authenticatedProfile || !this.currentUser) {
+                        const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+                        if (sessionError) throw sessionError;
+                        const session = sessionData?.session;
+                        if (session?.user?.id) {
+                            const { data: profile, error: profileError } = await supabaseClient
+                                .from('profiles')
+                                .select('id,full_name,role,farm_id')
+                                .eq('id', session.user.id)
+                                .maybeSingle();
+                            if (profileError) throw profileError;
+                            if (profile) this.applyAuthenticatedProfile(profile);
+                        }
+                    }
+                } catch (e) {
+                    this.setCloudStatus('تعذر التحقق من جلسة Supabase: ' + (e.message || e));
+                }
+                if (!authenticatedProfile || !this.currentUser) {
+                    const gate = document.getElementById('authGate');
+                    const msg = document.getElementById('authMessage');
+                    if (gate) {
+                        gate.classList.remove('hidden');
+                        gate.style.display = 'flex';
+                        gate.style.visibility = 'visible';
+                        gate.style.opacity = '1';
+                        gate.style.zIndex = '99999';
+                    }
+                    if (msg) msg.textContent = 'سجّل الدخول بالبريد الإلكتروني وكلمة مرور حساب Supabase أولًا.';
+                    const email = document.getElementById('authEmail');
+                    if (email) email.focus();
+                    this.setCloudStatus('يلزم تسجيل الدخول قبل المزامنة.');
+                    return;
+                }
+                const buttons = document.querySelectorAll('button[onclick="app.syncNow()"]');
+                buttons.forEach(b => { b.disabled = true; b.style.opacity = '0.65'; });
+                try {
+                    await this.saveCloudState();
+                    await this.loadCloudState();
+                    this.setCloudStatus('اكتملت المزامنة بنجاح.');
+                    this.showNotice('تمت مزامنة البيانات مع Supabase بنجاح.', 'المزامنة السحابية');
+                } catch (e) {
+                    const message = e?.message || String(e);
+                    this.setCloudStatus('فشلت المزامنة: ' + message);
+                    this.showNotice('فشلت المزامنة: ' + message, 'خطأ في المزامنة');
+                } finally {
+                    buttons.forEach(b => { b.disabled = false; b.style.opacity = ''; });
+                }
+            }
+
+            async getCloudFarmMap() {
+                const { data: farms, error } = await supabaseClient.from('farms').select('id,name,location,barns');
+                if (error) throw error;
+                cloudFarmMap = new Map((farms || []).map(f => [String(f.id), f]));
+                return farms || [];
+            }
+
+            async loadCloudState() {
+                if (!authenticatedProfile || cloudIsLoading) return;
+                cloudIsLoading = true;
+                try {
+                    this.setCloudStatus('جارٍ تحميل بيانات المزرعة من السحابة…');
+                    const farms = await this.getCloudFarmMap();
+                    const profile = authenticatedProfile;
+                    const allowedRemote = profile.role === 'admin' ? farms : farms.filter(f => String(f.id) === String(profile.farm_id));
+                    const remoteIds = allowedRemote.map(f => f.id);
+                    if (!remoteIds.length && profile.role !== 'admin') {
+                        this.setCloudStatus('حسابك لا يرتبط بمزرعة في جدول farms. اطلب من المدير ربط الحساب بالمزرعة.');
+                        return;
+                    }
+                    let query = supabaseClient.from('app_farm_snapshots').select('farm_id,payload,updated_at');
+                    if (profile.role !== 'admin') query = query.eq('farm_id', profile.farm_id);
+                    else if (remoteIds.length) query = query.in('farm_id', remoteIds);
+                    const { data: snapshots, error } = await query;
+                    if (error) throw error;
+                    if (snapshots && snapshots.length) {
+                        const all = { flocks: [], inventory: [], dailyLogs: [], medicines: [], sales: [], workers: [], expenses: [] };
+                        const remoteFarmNames = new Map(allowedRemote.map(f => [String(f.id), f.name]));
+                        const localFarmByName = new Map((this.state.farms || []).map(f => [String(f.name).trim(), f]));
+                        for (const snap of snapshots) {
+                            const payload = snap.payload || {};
+                            const remoteName = remoteFarmNames.get(String(snap.farm_id));
+                            let localFarm = localFarmByName.get(String(remoteName || payload.farm?.name || '').trim());
+                            if (!localFarm && payload.farm) {
+                                localFarm = { ...payload.farm, id: payload.farm.id || ('cloud-' + snap.farm_id) };
+                                this.state.farms.push(localFarm);
+                                localFarmByName.set(String(localFarm.name).trim(), localFarm);
+                            }
+                            const localFarmId = localFarm?.id;
+                            for (const key of Object.keys(all)) {
+                                for (const item of (payload[key] || [])) {
+                                    const copy = { ...item };
+                                    if (localFarmId && ['flocks','inventory','expenses','dailyLogs','medicines','sales','workers'].includes(key)) copy.farmId = localFarmId;
+                                    all[key].push(copy);
+                                }
+                            }
+                        }
+                        for (const key of Object.keys(all)) {
+                            const loadedIds = new Set(all[key].map(x => String(x.id)));
+                            const cloudFarmLocalIds = new Set((this.state.farms || []).filter(f => allowedRemote.some(r => String(r.name).trim() === String(f.name).trim())).map(f => String(f.id)));
+                            const keepLocal = (this.state[key] || []).filter(x => {
+                                const flock = (this.state.flocks || []).find(f => String(f.id) === String(x.flockId));
+                                const belongs = x.farmId || flock?.farmId;
+                                if (loadedIds.has(String(x.id))) return false;
+                                return !belongs || !cloudFarmLocalIds.has(String(belongs));
+                            });
+                            this.state[key] = [...keepLocal, ...all[key]];
+                        }
+                        localStorage.setItem('poultry_v5_data', JSON.stringify(this.state));
+                        this.renderAll();
+                    }
+                    this.setCloudStatus('تم تحميل البيانات السحابية. الحفظ تلقائي عند أي تعديل.');
+                } finally { cloudIsLoading = false; }
+            }
+
+            startCloudRealtime() {
+                if (!authenticatedProfile || !supabaseClient.channel) return;
+                if (cloudRealtimeChannel) supabaseClient.removeChannel(cloudRealtimeChannel);
+                cloudRealtimeChannel = supabaseClient.channel('poultry-cloud-live-' + authenticatedProfile.id)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_farm_snapshots' }, payload => {
+                        if (payload?.new?.updated_by && String(payload.new.updated_by) === String(authenticatedProfile?.id)) return;
+                        clearTimeout(cloudRealtimeReloadTimer);
+                        cloudRealtimeReloadTimer = setTimeout(() => this.loadCloudState().catch(e => this.setCloudStatus('تعذر تحديث البيانات تلقائيًا: ' + (e.message || e))), 900);
+                    }).subscribe(status => {
+                        if (status === 'SUBSCRIBED') this.setCloudStatus('المزامنة التلقائية مفعّلة.');
+                    });
+            }
+
+            async saveCloudState() {
+                if (!authenticatedProfile || !this.currentUser) throw new Error('سجّل الدخول أولًا قبل الحفظ السحابي.');
+                this.setCloudStatus('جارٍ حفظ التغييرات في السحابة…');
+                const farms = await this.getCloudFarmMap();
+                const localFarms = this.state.farms || [];
+                let targets = authenticatedProfile.role === 'admin' ? localFarms : localFarms.filter(f => {
+                    const remote = farms.find(r => String(r.id) === String(authenticatedProfile.farm_id));
+                    return remote && String(f.name).trim() === String(remote.name).trim();
+                });
+                if (!targets.length) throw new Error('لا توجد مزرعة مرتبطة بهذا الحساب للحفظ.');
+                let savedCount = 0;
+                for (let index = 0; index < targets.length; index++) {
+                    const farm = targets[index];
+                    let remote = farms.find(r => String(r.name).trim() === String(farm.name).trim());
+                    if (!remote) {
+                        if (authenticatedProfile.role !== 'admin') continue;
+                        const { data, error } = await supabaseClient.from('farms').insert({ name: farm.name, location: farm.location || '', barns: farm.barns || [] }).select('id,name,location,barns').single();
+                        if (error) throw error;
+                        remote = data; farms.push(remote);
+                    } else if (authenticatedProfile.role === 'admin') {
+                        const { error } = await supabaseClient.from('farms').update({ location: farm.location || '', barns: farm.barns || [] }).eq('id', remote.id);
+                        if (error) throw error;
+                    }
+                    const localFarmId = String(farm.id);
+                    const localFlocks = (this.state.flocks || []).filter(x => String(x.farmId || '') === localFarmId);
+                    const pick = key => (this.state[key] || []).filter(x => {
+                        const flock = (this.state.flocks || []).find(f => String(f.id) === String(x.flockId));
+                        let belongs = x.farmId || flock?.farmId;
+                        // Older unassigned stock/records are attached to the first farm so they are not silently dropped.
+                        if (!belongs && index === 0 && ['inventory','dailyLogs','medicines','sales','workers','expenses'].includes(key)) return true;
+                        return String(belongs || '') === localFarmId;
+                    });
+                    const payload = {
+                        farm: { ...farm }, flocks: localFlocks,
+                        inventory: pick('inventory'), dailyLogs: pick('dailyLogs'), medicines: pick('medicines'),
+                        sales: pick('sales'), workers: pick('workers'), expenses: pick('expenses'),
+                        partners: this.state.partners || [], saved_by: authenticatedProfile.id
+                    };
+                    const { error: saveError } = await supabaseClient.from('app_farm_snapshots').upsert({ farm_id: remote.id, payload, updated_by: authenticatedProfile.id, updated_at: new Date().toISOString() }, { onConflict: 'farm_id' });
+                    if (saveError) throw saveError;
+                    const { data: check, error: checkError } = await supabaseClient.from('app_farm_snapshots').select('farm_id,updated_at').eq('farm_id', remote.id).maybeSingle();
+                    if (checkError) throw checkError;
+                    if (!check) throw new Error('تعذر التأكد من حفظ بيانات المزرعة: ' + farm.name);
+                    savedCount++;
+                }
+                if (!savedCount) throw new Error('لم يتم حفظ أي مزرعة. راجع ربط الحساب بالمزرعة.');
+                this.setCloudStatus('تم حفظ ' + savedCount + ' مزرعة والتحقق من وجود السجلات على Supabase.');
+            }
+
+            init() {
+                this.renderAll();
+                this.backToMainHub();
+            }
+
+            escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+
+            showNotice(msg, title = "تنبيه النظام") {
+                document.getElementById('dialogTitle').innerText = title;
+                document.getElementById('dialogMessage').innerText = msg;
+                this.openModal('dialogModal');
+            }
+
+            // TEMPORARY DEVELOPMENT MODE: roles and section permissions are bypassed.
+            // Re-enable proper role checks before production deployment.
+            requireAdminMutation(action = 'تعديل أو حذف البيانات') {
+                return true;
+            }
+
+            hasPermission(sectionId, type = 'read') {
+                return true;
+            }
+
+            renderMainHubGrid() {
+                const container = document.getElementById('sections2ColumnGrid');
+                if (!container) return;
+
+                container.innerHTML = this.state.sections.map((sec) => {
+                    const canAccess = true;
+                    return `
+                        <div onclick="${canAccess ? `app.openSection('${sec.id}')` : `app.showAccessDeniedModal()`}" 
+                             class="card-hover bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs cursor-pointer flex items-center justify-between group ${!canAccess ? 'opacity-60 bg-slate-50' : ''}">
+                            <div class="flex items-center gap-5">
+                                <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-farmGreen-50 to-emerald-100 text-farmGreen-700 border border-farmGreen-200/60 flex items-center justify-center text-3xl group-hover:bg-farmGreen-600 group-hover:text-white transition-all duration-300 shadow-xs shrink-0">
+                                    <i class="fa-solid ${sec.icon}"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-black text-base text-slate-800 group-hover:text-farmGreen-700 transition flex items-center gap-2">
+                                        ${sec.title}
+                                        ${!canAccess ? '<i class="fa-solid fa-lock text-rose-500 text-xs"></i>' : ''}
+                                    </h3>
+                                    <p class="text-xs text-slate-400 mt-1 font-medium">${sec.desc || ''}</p>
+                                </div>
+                            </div>
+                            <div class="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center text-slate-400 group-hover:bg-farmGreen-50 group-hover:text-farmGreen-600 transition shrink-0">
+                                <i class="fa-solid fa-chevron-left text-xs"></i>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                document.getElementById('btnCustomSections').style.display = 'flex';
+                document.getElementById('btnBackupRestore').style.display = 'flex';
+            }
+
+            openSection(secId) {
+                if (!this.hasPermission(secId, 'read')) {
+                    this.showNotice('عذراً! ليس لديك صلاحية لدخول هذا القسم.');
+                    return;
+                }
+
+                this.activeSectionId = secId;
+                const sec = this.state.sections.find(s => s.id === secId);
+                if (!sec) return;
+
+                document.getElementById('mainHubView').classList.add('hidden');
+                document.getElementById('insideSectionView').classList.remove('hidden');
+
+                document.getElementById('activeSectionTitle').innerText = sec.title;
+                document.getElementById('activeSectionIcon').innerHTML = `<i class="fa-solid ${sec.icon}"></i>`;
+
+                const btnContainer = document.getElementById('sectionActionBtnContainer');
+                btnContainer.innerHTML = '';
+                if (sec.addBtnLabel && this.hasPermission(secId, 'write')) {
+                    btnContainer.innerHTML = `
+                        <button onclick="app.triggerAddAction('${secId}')" class="bg-farmGreen-600 hover:bg-farmGreen-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>${sec.addBtnLabel}</span>
+                        </button>
+                    `;
+                }
+
+                document.querySelectorAll('.section-content').forEach(el => el.classList.add('hidden'));
+                const activeTab = document.getElementById(`tab-${secId}`);
+                if (activeTab) activeTab.classList.remove('hidden');
+
+                if (secId === 'partners') this.renderPartnersTab();
+                if (secId === 'daily') this.renderDailyLogs();
+                if (secId === 'farms') this.renderFarms();
+                if (secId === 'inventory') this.renderInventory();
+                if (secId === 'medicines') this.renderMedicines();
+                if (secId === 'sales') this.renderSales();
+                if (secId === 'workers') this.renderWorkers();
+                if (secId === 'expenses') this.renderExpenses();
+            }
+
+            backToMainHub() {
+                this.activeSectionId = null;
+                document.getElementById('insideSectionView').classList.add('hidden');
+                document.getElementById('mainHubView').classList.remove('hidden');
+            }
+
+            triggerAddAction(secId) {
+                if (secId === 'users') this.openUserModal();
+                else if (secId === 'farms') this.openModal('farmModal');
+                else if (secId === 'flocks') this.openFlockModal();
+                else if (secId === 'daily') this.openDailyModal();
+                else if (secId === 'inventory') this.openInventoryModal();
+                else if (secId === 'medicines') this.openMedicineModal();
+                else if (secId === 'sales') this.openSalesModal();
+                else if (secId === 'workers') this.openModal('workerModal');
+                else if (secId === 'expenses') this.openExpensesModal();
+                else if (secId === 'partners') this.openPartnersModal();
+            }
+
+            showAccessDeniedModal() {
+                this.showNotice('تنبيه: هذا القسم محمي ويتطلب صلاحيات مدير النظام.');
+            }
+
+            populateFlockSelectors() {
+                const hubSelect = document.getElementById('hubFlockFilter');
+                const partnerSelect = document.getElementById('partnerFlockSelect');
+
+                const optionsHtml = `
+                    <option value="all">كافة الدورات (إجمالي المزرعة)</option>
+                    ${this.state.flocks.map(f => `<option value="${f.id}">${f.name} (${f.status})</option>`).join('')}
+                `;
+
+                if (hubSelect) hubSelect.innerHTML = optionsHtml;
+                if (partnerSelect) partnerSelect.innerHTML = this.state.flocks.map(f => `<option value="${f.id}">${f.name} (${f.status})</option>`).join('');
+
+                if (hubSelect) hubSelect.value = this.selectedFlockId;
+            }
+
+            onFlockFilterChange() {
+                const hubSelect = document.getElementById('hubFlockFilter');
+                if (hubSelect) this.selectedFlockId = hubSelect.value;
+                this.renderDashboardStats();
+                this.refreshFarmWeather(false);
+                this.refreshPoultryPrice(false);
+            }
+
+            async refreshFarmWeather(force = false) {
+                const host = document.getElementById('farmWeatherCards'); if (!host) return;
+                const selectedFlock = this.state.flocks.find(f => f.id === this.selectedFlockId);
+                const farmsToShow = this.selectedFlockId === 'all' ? [] : this.state.farms.filter(f => f.id === selectedFlock?.farmId);
+                if (!farmsToShow.length) { host.innerHTML = '<span class="text-xs font-semibold text-slate-500">اختر دورة محددة لعرض حرارة مزرعتها</span>'; return; }
+                const farm = farmsToShow[0];
+                host.innerHTML = `<div class="text-sm font-black text-slate-800">${this.escapeHtml(farm.name)}</div><div class="text-[10px] text-slate-500">${this.escapeHtml(farm.location || 'العنوان غير مسجل')}</div><div id="weather_${farm.id}" class="text-lg font-black text-rose-600 mt-1">جارٍ التحميل…</div>`;
+                for (const farm of farmsToShow) {
+                    const node = document.getElementById('weather_'+farm.id); if (!node) continue;
+                    const cache = farm.weatherCache;
+                    if (!force && cache && Date.now()-cache.time < 30*60*1000) { node.innerHTML = `${cache.temp}°م <span class="block text-[10px] font-normal">${cache.updated}</span>`; continue; }
+                    try {
+                        const place = (farm.location || '').trim(); if (!place) throw new Error('أضف عنوان المزرعة');
+                        const geoUrl = 'https://geocoding-api.open-meteo.com/v1/search?count=1&language=ar&format=json&name='+encodeURIComponent(place+', Egypt');
+                        const geo = await (await fetch(geoUrl)).json();
+                        if (!geo.results || !geo.results.length) throw new Error('العنوان غير معروف');
+                        const point = geo.results[0];
+                        const wx = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${point.latitude}&longitude=${point.longitude}&current=temperature_2m&timezone=Africa%2FCairo`)).json();
+                        const temp = wx.current?.temperature_2m; if (temp == null) throw new Error('لا توجد قراءة');
+                        const updated = new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+                        farm.weatherCache = {temp,updated,time:Date.now(),place:point.name};
+                        node.innerHTML = `${temp}°م <span class="block text-[10px] font-normal">تحديث ${updated}</span>`;
+                        this.saveToStorage();
+                    } catch(e) { node.innerHTML = `<span class="text-xs text-rose-600">${this.escapeHtml(e.message || 'تعذر جلب الطقس')}</span>`; }
+                }
+            }
+
+            async refreshPoultryPrice(force = false) {
+                const host = document.getElementById('poultryPriceCard'); if (!host) return;
+                const cache = this.state.poultryPriceCache;
+                if (!force && cache && Date.now()-cache.time < 30*60*1000) { this.renderPoultryPrice(cache); return; }
+                host.innerHTML = '<div class="text-xs text-slate-500">جارٍ تحديث السعر…</div>';
+                try {
+                    const source = 'https://elmorshdledwagn.com/';
+                    const proxy = 'https://api.allorigins.win/raw?url='+encodeURIComponent(source);
+                    const response = await fetch(proxy, {cache:'no-store'}); if (!response.ok) throw new Error('المصدر غير متاح الآن');
+                    const html = await response.text();
+                    const doc = new DOMParser().parseFromString(html,'text/html');
+                    const text = (doc.body?.innerText || doc.body?.textContent || '').replace(/\s+/g,' ');
+                    const idx = text.indexOf('اللحم الابيض'); if (idx < 0) throw new Error('تعذر قراءة سعر اللحم من المصدر');
+                    const snippet = text.slice(idx, idx+180);
+                    const nums = [...snippet.matchAll(/(?:^|\s)(\d{1,3}(?:[.,]\d+)?)(?=\s|$)/g)].map(m=>Number(m[1].replace(',','.'))).filter(n=>n>0&&n<300);
+                    if (!nums.length) throw new Error('السعر غير ظاهر في الصفحة');
+                    const price = nums[0];
+                    const record = {price,source,updatedAt:new Date().toISOString(),time:Date.now()};
+                    this.state.poultryPriceCache = record; this.saveToStorage(); this.renderPoultryPrice(record);
+                } catch(e) {
+                    host.innerHTML = `<div class="text-sm font-bold text-amber-700">تعذر التحديث التلقائي الآن</div><div class="text-[11px] text-slate-500 mt-1">افتح موقع المرشد للتحقق من السعر الحالي. لن نعرض سعرًا قديمًا على أنه سعر اليوم.</div>`;
+                }
+            }
+            renderPoultryPrice(record) {
+                const host = document.getElementById('poultryPriceCard'); if (!host || !record) return;
+                const date = new Date(record.updatedAt).toLocaleString('ar-EG',{dateStyle:'short',timeStyle:'short'});
+                host.innerHTML = `<div class="text-xs text-slate-600">سعر المرشد للدواجن — اللحم الأبيض</div><div class="text-3xl font-black text-emerald-700 my-1">${record.price} <span class="text-sm">جنيه/كجم</span></div><div class="text-[10px] text-slate-500">آخر قراءة: ${date}</div>`;
+            }
+
+            renderDashboardStats() {
+                const selected = this.selectedFlockId;
+
+                const filteredFlocks = selected === 'all' ? this.state.flocks : this.state.flocks.filter(f => f.id === selected);
+                const filteredDaily = selected === 'all' ? this.state.dailyLogs : this.state.dailyLogs.filter(d => d.flockId === selected);
+                const filteredSales = selected === 'all' ? this.state.sales : this.state.sales.filter(s => s.flockId === selected);
+                const filteredExpenses = selected === 'all' ? this.state.expenses : this.state.expenses.filter(e => e.flockId === selected);
+
+                const totalCashReserve = filteredFlocks.reduce((sum, fl) => sum + (Number(fl.initialCash) || 0), 0);
+                const totalMortality = filteredDaily.reduce((sum, log) => sum + (Number(log.mortality) || 0), 0);
+                const initialChicksSum = filteredFlocks.reduce((sum, fl) => sum + (Number(fl.initialCount) || 0), 0);
+                const currentLiveChicks = Math.max(0, initialChicksSum - totalMortality);
+
+                const totalSales = filteredSales.reduce((sum, s) => sum + (Number(s.totalEGP) || 0), 0);
+                const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+                document.getElementById('statCashReserve').innerText = `${totalCashReserve.toLocaleString()} ج.م`;
+                document.getElementById('statLiveCount').innerText = `${currentLiveChicks.toLocaleString()} طائر`;
+                document.getElementById('statMortalityCount').innerText = `${totalMortality.toLocaleString()} طائر`;
+                document.getElementById('statTotalSales').innerText = `${totalSales.toLocaleString()} ج.م`;
+                document.getElementById('statTotalExpenses').innerText = `${totalExpenses.toLocaleString()} ج.م`;
+            }
+
+            // --- INVENTORY MANAGEMENT ---
+            inventoryOptions = {
+                'أعلاف': ['علف بادي','علف نامي','علف ناهي'],
+                'جير حي': ['جير حي'],
+                'أدوية وتحضينات': ['أدوية','تحصينات'],
+                'نشارة': ['نشارة'], 'غاز': ['غاز'], 'أخرى': ['أخرى']
+            };
+            inventoryUnitsFor(category) { return category === 'أعلاف' ? ['كيلوجرام','طن'] : category === 'جير حي' ? ['كيلوجرام'] : category === 'أدوية وتحضينات' ? ['لتر','كيلوجرام'] : ['عدد']; }
+            openInventoryModal() {
+                const farm = document.getElementById('invFarm');
+                farm.innerHTML = this.state.farms.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+                document.getElementById('invDate').value = new Date().toISOString().slice(0,10);
+                document.getElementById('invCategory').value = 'أعلاف';
+                document.getElementById('invSupplier').value = '';
+                document.getElementById('invMedicineName').value = '';
+                document.getElementById('invPayment').value = 'كاش';
+                document.getElementById('invQty').value = 1; document.getElementById('invUnitPrice').value = 0;
+                this.updateInventoryFlocks(); this.updateInventoryItemOptions(); this.updateInventoryTotal();
+                this.openModal('inventoryModal');
+            }
+            updateInventoryFlocks() {
+                const farmId = document.getElementById('invFarm').value;
+                const select = document.getElementById('invFlock');
+                select.innerHTML = '<option value="">بدون ربط بدورة</option>' + this.state.flocks.filter(f => f.farmId === farmId).map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+            }
+            updateInventoryItemOptions() {
+                const category = document.getElementById('invCategory').value;
+                const select = document.getElementById('invNameSelect');
+                select.innerHTML = (this.inventoryOptions[category] || ['أخرى']).map(n => `<option value="${n}">${n}</option>`).join('');
+                const other = category === 'أخرى';
+                const medicine = category === 'أدوية وتحضينات';
+                const otherInput = document.getElementById('invOtherName');
+                const medicineInput = document.getElementById('invMedicineName');
+                otherInput.classList.toggle('hidden', !other);
+                otherInput.required = other;
+                medicineInput.classList.toggle('hidden', !medicine);
+                medicineInput.required = medicine;
+                this.updateInventoryUnit();
+            }
+            updateInventoryUnit() {
+                const unitSelect = document.getElementById('invUnit');
+                const units = this.inventoryUnitsFor(document.getElementById('invCategory').value);
+                unitSelect.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
+                this.updateInventoryTotal();
+            }
+            updateInventoryTotal() {
+                const q = Number(document.getElementById('invQty')?.value) || 0;
+                const p = Number(document.getElementById('invUnitPrice')?.value) || 0;
+                const total = document.getElementById('invTotal'); if (total) total.value = (q*p).toFixed(2);
+            }
+            renderInventory() {
+                const body = document.getElementById('inventoryTableBody'); if (!body) return;
+                if (!this.state.inventory || !this.state.inventory.length) { body.innerHTML = `<tr><td colspan="11" class="p-8 text-center text-slate-400 font-bold">لا توجد أصناف مسجلة بالمخزن.</td></tr>`; return; }
+                body.innerHTML = this.state.inventory.map(item => {
+                    const farm = this.state.farms.find(f => f.id === item.farmId);
+                    return `<tr class="hover:bg-slate-50/80"><td class="p-3.5">${item.date || '-'}</td><td class="p-3.5">${farm ? farm.name : '-'}</td><td class="p-3.5 font-bold">${item.name}</td><td class="p-3.5">${item.category}</td><td class="p-3.5 font-black text-indigo-700">${item.qty}</td><td class="p-3.5">${item.unit}</td><td class="p-3.5">${Number(item.unitPrice||0).toLocaleString()} ج.م</td><td class="p-3.5 font-extrabold text-emerald-700">${(item.qty*(item.unitPrice||0)).toLocaleString()} ج.م</td><td class="p-3.5">${item.supplier || '-'}</td><td class="p-3.5">${item.payment || '-'}</td><td class="p-3.5 text-center"><button onclick="app.deleteInventoryItem('${item.id}')" class="text-slate-300 hover:text-rose-600"><i class="fa-solid fa-trash-can"></i></button></td></tr>`;
+                }).join('');
+            }
+            saveInventoryItem(e) {
+                e.preventDefault();
+                const category = document.getElementById('invCategory').value;
+                const name = category === 'أخرى' ? document.getElementById('invOtherName').value.trim() : category === 'أدوية وتحضينات' ? `${document.getElementById('invNameSelect').value} - ${document.getElementById('invMedicineName').value.trim()}` : document.getElementById('invNameSelect').value;
+                const date = document.getElementById('invDate').value, farmId = document.getElementById('invFarm').value;
+                const flockId = document.getElementById('invFlock').value || null;
+                const unit = document.getElementById('invUnit').value, qty = Number(document.getElementById('invQty').value)||0;
+                const unitPrice = Number(document.getElementById('invUnitPrice').value)||0;
+                const supplier = document.getElementById('invSupplier').value.trim(), payment = document.getElementById('invPayment').value;
+                const total = qty * unitPrice;
+                const inventoryId = 'inv_' + Date.now();
+                this.state.inventory.unshift({id:inventoryId, date, farmId, flockId, name, category, unit, qty, unitPrice, supplier, payment});
+                // Automatically post the purchase value to cycle expenses, linked to the selected cycle.
+                this.state.expenses.unshift({id:'ex_inv_'+Date.now(), flockId, farmId, date, category: category === 'أعلاف' ? 'مشتريات أعلاف' : category === 'غاز' ? 'غاز وتدفئة' : category === 'أدوية وتحضينات' ? 'أدوية وتحضينات' : category === 'نشارة' ? 'نشارة' : category === 'جير حي' ? 'جير حي' : 'مشتريات أخرى', amount: total, description:`شراء ${name} — كمية ${qty} ${unit} — المورد: ${supplier} — السداد: ${payment}`, supplier, payment, inventoryItemId:inventoryId});
+                this.saveToStorage(); this.closeModal('inventoryModal'); this.renderInventory(); this.renderExpenses();
+            }
+
+            deleteInventoryItem(id) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.inventory = this.state.inventory.filter(i => i.id !== id);
+                this.saveToStorage();
+                this.renderInventory();
+            }
+
+            // --- MEDICINES MANAGEMENT ---
+            openMedicineModal() {
+                const select = document.getElementById('medFlockSelect');
+                if (select) select.innerHTML = this.state.flocks.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+                document.getElementById('medDate').value = new Date().toISOString().split('T')[0];
+                this.openModal('medicineModal');
+            }
+
+            renderMedicines() {
+                const body = document.getElementById('medicinesTableBody');
+                if (!body) return;
+
+                if (!this.state.medicines || this.state.medicines.length === 0) {
+                    body.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-bold">لا توجد سجلات أدوية أو تحصينات مسجلة.</td></tr>`;
+                    return;
+                }
+
+                body.innerHTML = this.state.medicines.map(m => {
+                    const flock = this.state.flocks.find(f => f.id === m.flockId);
+                    return `
+                        <tr class="hover:bg-slate-50/80">
+                            <td class="p-3.5 font-bold text-slate-800">${m.name}</td>
+                            <td class="p-3.5">${flock ? flock.name : 'عام'}</td>
+                            <td class="p-3.5">${m.date}</td>
+                            <td class="p-3.5 font-semibold text-slate-600">${m.dosage || '-'}</td>
+                            <td class="p-3.5 font-black text-amber-700">${(m.cost || 0).toLocaleString()} ج.م</td>
+                            <td class="p-3.5 text-slate-500">${m.notes || '-'}</td>
+                            <td class="p-3.5 text-center">
+                                <button onclick="app.deleteMedicine('${m.id}')" class="text-slate-300 hover:text-rose-600 transition"><i class="fa-solid fa-trash-can"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            saveMedicineRecord(e) {
+                e.preventDefault();
+                const name = document.getElementById('medName').value;
+                const flockId = document.getElementById('medFlockSelect').value;
+                const date = document.getElementById('medDate').value;
+                const dosage = document.getElementById('medDosage').value;
+                const cost = Number(document.getElementById('medCost').value) || 0;
+                const notes = document.getElementById('medNotes').value;
+
+                this.state.medicines.unshift({ id: 'med_' + Date.now(), name, flockId, date, dosage, cost, notes });
+                
+                if (cost > 0) {
+                    this.state.expenses.unshift({
+                        id: 'ex_' + Date.now(),
+                        flockId, category: 'أدوية وتحصينات', amount: cost, date, description: `علاج: ${name}`
+                    });
+                }
+
+                this.saveToStorage();
+                this.closeModal('medicineModal');
+                this.renderMedicines();
+            }
+
+            deleteMedicine(id) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.medicines = this.state.medicines.filter(m => m.id !== id);
+                this.saveToStorage();
+                this.renderMedicines();
+            }
+
+            // --- SALES MANAGEMENT ---
+            openSalesModal() {
+                const farmSelect = document.getElementById('saleFarmSelect');
+                farmSelect.innerHTML = (this.state.farms || []).map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+                this.updateSaleFlocks();
+                document.getElementById('saleDate').value = new Date().toISOString().split('T')[0];
+                document.getElementById('salePriceKg').value = '';
+                document.getElementById('saleTareRows').innerHTML = '';
+                document.getElementById('saleGrossRows').innerHTML = '';
+                this.addSaleWeightRow('tare'); this.addSaleWeightRow('gross');
+                this.calcSaleNet();
+                this.openModal('salesModal');
+            }
+
+            updateSaleFlocks() {
+                const farmId = document.getElementById('saleFarmSelect').value;
+                const flocks = (this.state.flocks || []).filter(f => f.farmId === farmId);
+                document.getElementById('saleFlockSelect').innerHTML = flocks.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+            }
+
+            addSaleWeightRow(type) {
+                const container = document.getElementById(type === 'tare' ? 'saleTareRows' : 'saleGrossRows');
+                const row = document.createElement('div'); row.className = 'flex gap-2 items-center';
+                row.innerHTML = `<input type="number" min="0" step="0.1" placeholder="الوزن بالكجم" oninput="app.calcSaleNet()" class="sale-${type}-weight min-w-0 flex-1 border border-slate-300 rounded-xl p-2.5"><button type="button" onclick="this.parentElement.remove(); app.calcSaleNet()" class="text-rose-600 font-bold px-2">×</button>`;
+                container.appendChild(row);
+            }
+
+            calcSaleNet() {
+                const sum = selector => [...document.querySelectorAll(selector)].reduce((a, el) => a + (Number(el.value) || 0), 0);
+                const gross = sum('.sale-gross-weight'), tare = sum('.sale-tare-weight');
+                const net = Math.max(0, gross - tare), price = Number(document.getElementById('salePriceKg').value) || 0;
+                document.getElementById('saleGrossSum').innerText = gross.toLocaleString('en-US',{maximumFractionDigits:2});
+                document.getElementById('saleTareSum').innerText = tare.toLocaleString('en-US',{maximumFractionDigits:2});
+                document.getElementById('saleNet').innerText = net.toLocaleString('en-US',{maximumFractionDigits:2});
+                document.getElementById('saleTotalCalc').innerText = `${(net * price).toLocaleString('en-US',{maximumFractionDigits:2})} ج.م`;
+            }
+
+            renderSales() {
+                const body = document.getElementById('salesTableBody');
+                if (!body) return;
+
+                if (!this.state.sales || this.state.sales.length === 0) {
+                    body.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-bold">لا توجد فواتير مبيعات مسجلة بعد.</td></tr>`;
+                    return;
+                }
+
+                body.innerHTML = this.state.sales.map(s => {
+                    const flock = this.state.flocks.find(f => f.id === s.flockId);
+                    return `
+                        <tr class="hover:bg-slate-50/80">
+                            <td class="p-3.5 font-bold text-slate-800">${s.date}</td>
+                            <td class="p-3.5">${flock ? flock.name : 'عام'}</td>
+                            <td class="p-3.5">${(s.grossWeight || 0).toLocaleString()}</td>
+                            <td class="p-3.5 font-black text-indigo-700">${(s.netWeight || 0).toLocaleString()}</td>
+                            <td class="p-3.5 font-bold">${s.pricePerKg} ج.م</td>
+                            <td class="p-3.5 font-black text-emerald-700 bg-emerald-50/40">${(s.totalEGP || 0).toLocaleString()} ج.م</td>
+                            <td class="p-3.5 text-center">
+                                <button onclick="app.deleteSale('${s.id}')" class="text-slate-300 hover:text-rose-600 transition"><i class="fa-solid fa-trash-can"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            saveSaleRecord(e) {
+                e.preventDefault();
+                const flockId = document.getElementById('saleFlockSelect').value;
+                if (!flockId) { alert('اختر دورة تابعة للمزرعة المحددة'); return; }
+                const date = document.getElementById('saleDate').value;
+                const sum = selector => [...document.querySelectorAll(selector)].reduce((a, el) => a + (Number(el.value) || 0), 0);
+                const grossWeight = sum('.sale-gross-weight'), tareWeight = sum('.sale-tare-weight');
+                const pricePerKg = Number(document.getElementById('salePriceKg').value) || 0;
+                const netWeight = Math.max(0, grossWeight - tareWeight), totalEGP = netWeight * pricePerKg;
+                this.state.sales.unshift({ id: 's_' + Date.now(), flockId, date, grossWeight, tareWeight, netWeight, pricePerKg, totalEGP });
+                this.saveToStorage(); this.closeModal('salesModal'); this.renderSales();
+            }
+
+            deleteSale(id) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.sales = this.state.sales.filter(s => s.id !== id);
+                this.saveToStorage();
+                this.renderSales();
+            }
+
+            // --- WORKERS MANAGEMENT ---
+            renderWorkers() {
+                const body = document.getElementById('workersTableBody');
+                if (!body) return;
+
+                if (!this.state.workers || this.state.workers.length === 0) {
+                    body.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-bold">لا يوجد عمال مسجلون حالياً.</td></tr>`;
+                    return;
+                }
+
+                body.innerHTML = this.state.workers.map(w => {
+                    const netSalary = Math.max(0, (w.salary || 0) - (w.advance || 0));
+                    return `
+                        <tr class="hover:bg-slate-50/80">
+                            <td class="p-3.5 font-bold text-slate-800">${w.name}</td>
+                            <td class="p-3.5">${w.role || 'عامل'}</td>
+                            <td class="p-3.5 font-bold">${(w.salary || 0).toLocaleString()} ج.م</td>
+                            <td class="p-3.5 text-rose-600 font-bold">${(w.advance || 0).toLocaleString()} ج.م</td>
+                            <td class="p-3.5 font-black text-emerald-700">${netSalary.toLocaleString()} ج.م</td>
+                            <td class="p-3.5 text-center">
+                                <button onclick="app.deleteWorker('${w.id}')" class="text-slate-300 hover:text-rose-600 transition"><i class="fa-solid fa-trash-can"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            saveWorker(e) {
+                e.preventDefault();
+                const name = document.getElementById('workerName').value;
+                const role = document.getElementById('workerRole').value;
+                const salary = Number(document.getElementById('workerSalary').value) || 0;
+                const advance = Number(document.getElementById('workerAdvance').value) || 0;
+                const phone = document.getElementById('workerPhone').value;
+
+                this.state.workers.unshift({ id: 'w_' + Date.now(), name, role, salary, advance, phone });
+                this.saveToStorage();
+                this.closeModal('workerModal');
+                this.renderWorkers();
+            }
+
+            deleteWorker(id) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.workers = this.state.workers.filter(w => w.id !== id);
+                this.saveToStorage();
+                this.renderWorkers();
+            }
+
+            // --- EXPENSES MANAGEMENT ---
+            openExpensesModal() {
+                const select = document.getElementById('expFlockSelect');
+                if (select) select.innerHTML = this.state.flocks.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+                document.getElementById('expDate').value = new Date().toISOString().split('T')[0];
+                this.openModal('expenseModal');
+            }
+
+            renderExpenses() {
+                const body = document.getElementById('expensesTableBody');
+                if (!body) return;
+
+                if (!this.state.expenses || this.state.expenses.length === 0) {
+                    body.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-bold">لا توجد مصروفات مسجلة بعد.</td></tr>`;
+                    return;
+                }
+
+                body.innerHTML = this.state.expenses.map(ex => {
+                    const flock = this.state.flocks.find(f => f.id === ex.flockId);
+                    return `
+                        <tr class="hover:bg-slate-50/80">
+                            <td class="p-3.5 font-bold text-slate-800">${ex.date}</td>
+                            <td class="p-3.5">${flock ? flock.name : 'عام'}</td>
+                            <td class="p-3.5"><span class="bg-amber-50 text-amber-800 px-2 py-0.5 rounded-lg font-bold">${ex.category}</span></td>
+                            <td class="p-3.5 font-black text-rose-600">${(ex.amount || 0).toLocaleString()} ج.م</td>
+                            <td class="p-3.5 text-slate-600">${ex.description || '-'}</td>
+                            <td class="p-3.5 text-center">
+                                <button onclick="app.deleteExpense('${ex.id}')" class="text-slate-300 hover:text-rose-600 transition"><i class="fa-solid fa-trash-can"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            saveExpense(e) {
+                e.preventDefault();
+                const flockId = document.getElementById('expFlockSelect').value;
+                const date = document.getElementById('expDate').value;
+                const category = document.getElementById('expCategory').value;
+                const amount = Number(document.getElementById('expAmount').value) || 0;
+                const description = document.getElementById('expDesc').value;
+
+                this.state.expenses.unshift({ id: 'ex_' + Date.now(), flockId, date, category, amount, description });
+                this.saveToStorage();
+                this.closeModal('expenseModal');
+                this.renderExpenses();
+            }
+
+            deleteExpense(id) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.expenses = this.state.expenses.filter(ex => ex.id !== id);
+                this.saveToStorage();
+                this.renderExpenses();
+            }
+
+            // --- FARMS MANAGEMENT WITH DELETE AND EDIT CAPABILITY ---
+            renderFarms() {
+                const container = document.getElementById('farmsListContainer');
+                if (!container) return;
+
+                const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+
+                if (this.state.farms.length === 0) {
+                    container.innerHTML = `<div class="col-span-2 text-center py-8 text-slate-400 font-bold">لا توجد مزارع مسجلة حالياً. قم بإضافة مزرعة جديدة.</div>`;
+                    return;
+                }
+
+                container.innerHTML = this.state.farms.map(f => `
+                    <div class="border border-slate-200/90 rounded-2xl p-4 bg-slate-50/50 flex justify-between items-start hover:border-farmGreen-500 transition shadow-xs">
+                        <div class="space-y-1">
+                            <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-warehouse text-farmGreen-600"></i>
+                                ${f.name}
+                            </h3>
+                            <p class="text-xs text-slate-500"><i class="fa-solid fa-location-dot ml-1 text-slate-400"></i>${f.location || 'غير محدد'}</p>
+                            <div class="mt-3 flex flex-wrap gap-1">
+                                ${(f.barns || []).map(b => `<span class="bg-white border border-slate-200 text-slate-700 text-[11px] px-2 py-0.5 rounded-lg font-semibold">${b}</span>`).join('')}
+                            </div>
+                        </div>
+
+                        ${isAdmin ? `
+                            <div class="flex items-center gap-1.5">
+                                <button onclick="app.deleteFarm('${f.id}')" title="حذف المزرعة" class="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white transition flex items-center justify-center text-xs">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+            }
+
+            saveFarm(e) {
+                e.preventDefault();
+                const name = document.getElementById('farmName').value;
+                const location = document.getElementById('farmLocation').value;
+                const barnsStr = document.getElementById('farmBarns').value;
+                const barns = barnsStr ? barnsStr.split(',').map(s => s.trim()).filter(Boolean) : ['عنبر 1'];
+
+                this.state.farms.push({ id: 'f_' + Date.now(), name, location, barns });
+                this.saveToStorage();
+                this.closeModal('farmModal');
+                this.renderFarms();
+            }
+
+            deleteFarm(farmId) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                if (!this.currentUser || this.currentUser.role !== 'admin') {
+                    this.showNotice('صلاحية الحذف مقتصرة على المدير العام فقط.');
+                    return;
+                }
+
+                const farm = this.state.farms.find(f => f.id === farmId);
+                if (!farm) return;
+
+                this.state.farms = this.state.farms.filter(f => f.id !== farmId);
+                this.saveToStorage();
+                this.renderFarms();
+                this.showNotice('تم حذف المزرعة بنجاح.');
+            }
+
+            // --- FLOCKS MANAGEMENT ---
+            openFlockModal() {
+                const farmSelect = document.getElementById('flockFarmSelect');
+                if (farmSelect) {
+                    farmSelect.innerHTML = this.state.farms.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+                }
+                document.getElementById('flockStartDate').value = new Date().toISOString().split('T')[0];
+                this.openModal('flockModal');
+            }
+
+            saveFlock(e) {
+                e.preventDefault();
+                const name = document.getElementById('flockName').value;
+                const farmId = document.getElementById('flockFarmSelect').value;
+                const barnName = document.getElementById('flockBarnName').value;
+                const breed = document.getElementById('flockBreed').value;
+                const initialCount = Number(document.getElementById('flockInitialCount').value) || 0;
+                const initialCash = Number(document.getElementById('flockInitialCash').value) || 0;
+                const startDate = document.getElementById('flockStartDate').value;
+
+                const newFlock = {
+                    id: 'fl_' + Date.now(),
+                    name, farmId, barnName, breed, initialCount, initialCash, startDate, status: 'نشطة'
+                };
+
+                this.state.flocks.unshift(newFlock);
+                this.selectedFlockId = newFlock.id;
+                this.saveToStorage();
+                this.closeModal('flockModal');
+            }
+
+            renderFlocks() {
+                const body = document.getElementById('flocksTableBody');
+                if (!body) return;
+
+                const isAdmin = this.currentUser && this.currentUser.role === 'admin';
+
+                body.innerHTML = this.state.flocks.map(fl => {
+                    const farm = this.state.farms.find(f => f.id === fl.farmId);
+                    const flockMortality = this.state.dailyLogs
+                        .filter(l => l.flockId === fl.id)
+                        .reduce((sum, l) => sum + (Number(l.mortality) || 0), 0);
+
+                    const currentCount = Math.max(0, (fl.initialCount || 0) - flockMortality);
+
+                    return `
+                        <tr class="hover:bg-slate-50/80">
+                            <td class="p-3.5 font-bold text-slate-800">${fl.name}</td>
+                            <td class="p-3.5">${farm ? farm.name : 'مزرعة عامة'} - ${fl.barnName}</td>
+                            <td class="p-3.5">${fl.breed}</td>
+                            <td class="p-3.5 font-bold">${(fl.initialCount || 0).toLocaleString()} طائر</td>
+                            <td class="p-3.5 font-bold text-rose-600">${flockMortality.toLocaleString()} طائر</td>
+                            <td class="p-3.5 font-extrabold text-emerald-700 bg-emerald-50/50">${currentCount.toLocaleString()} طائر</td>
+                            <td class="p-3.5">${fl.startDate}</td>
+                            <td class="p-3.5"><span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg text-[10px] font-bold">${fl.status}</span></td>
+                            <td class="p-3.5 text-center">
+                                ${isAdmin ? `
+                                    <button onclick="app.deleteFlock('${fl.id}')" title="حذف الدورة" class="text-slate-300 hover:text-rose-600 transition"><i class="fa-solid fa-trash-can"></i></button>
+                                ` : '-'}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            deleteFlock(flockId) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.flocks = this.state.flocks.filter(f => f.id !== flockId);
+                this.saveToStorage();
+                this.renderFlocks();
+            }
+
+            // --- DAILY LOGS ---
+            renderDailyLogs() {
+                const body = document.getElementById('dailyTableBody');
+                if (!body) return;
+
+                body.innerHTML = this.state.dailyLogs.map(log => {
+                    const flock = this.state.flocks.find(f => f.id === log.flockId);
+                    return `
+                        <tr class="hover:bg-slate-50/80">
+                            <td class="p-3.5 font-bold text-slate-800">${log.date}</td>
+                            <td class="p-3.5">${flock ? flock.name : 'دورة مجهولة'}</td>
+                            <td class="p-3.5">${log.age} يوم</td>
+                            <td class="p-3.5 font-black text-rose-600 bg-rose-50/50">${log.mortality} طائر</td>
+                            <td class="p-3.5 font-black text-emerald-700">${log.remaining ?? '—'} طائر</td>
+                            <td class="p-3.5">${log.feed} كجم</td>
+                            <td class="p-3.5">${log.water ?? '—'} لتر</td>
+                            <td class="p-3.5">${log.hours || 24} ساعة</td>
+                            <td class="p-3.5">${(log.dailyMedicines || []).map(m => `${m.name} (${m.qty} ${m.unit}، ${m.hours || 12} ساعة)`).join('، ') || '—'}</td>
+                            <td class="p-3.5 text-center">
+                                <button onclick="app.deleteDailyLog('${log.id}')" class="text-slate-300 hover:text-rose-600 transition"><i class="fa-solid fa-trash-can"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            openDailyModal() {
+                const select = document.getElementById('dlFlockSelect');
+                if (select) {
+                    select.innerHTML = this.state.flocks.filter(f => f.status === 'نشطة').map(f => `<option value="${f.id}">${f.name} (${f.barnName})</option>`).join('');
+                }
+                document.getElementById('dlDate').value = new Date().toISOString().split('T')[0];
+                const chosen = this.state.flocks.find(f => f.id === select.value);
+                document.getElementById('dlAge').value = chosen && chosen.startDate ? Math.max(1, Math.floor((Date.now() - Date.parse(chosen.startDate)) / 86400000) + 1) : 1;
+                document.getElementById('dlMortality').value = 0; document.getElementById('dlFeed').value = 0; document.getElementById('dlWeight').value = 0; document.getElementById('dlWater').value = 0; 
+                document.getElementById('dailyMedicineRows').innerHTML = ''; this.addDailyMedicineRow(); this.updateDailyMedicineHours(); this.updateDailyEstimates();
+                this.openModal('dailyModal');
+            }
+
+            addDailyMedicineRow() {
+                const wrap = document.getElementById('dailyMedicineRows');
+                if (!wrap) return;
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-12 gap-2 items-center';
+                row.innerHTML = `<input type="text" placeholder="اسم الدواء/التحصين" class="daily-med-name col-span-5 border border-slate-300 rounded-lg p-2" oninput="app.updateDailyMedicineHours()" />
+                    <input type="number" min="0" step="any" value="0" placeholder="الكمية" class="daily-med-qty col-span-3 border border-slate-300 rounded-lg p-2" oninput="app.updateDailyMedicineHours()" />
+                    <select class="daily-med-unit col-span-2 border border-slate-300 rounded-lg p-2"><option value="لتر">لتر</option><option value="كجم">كجم</option><option value="جرام">جرام</option><option value="مل">مل</option></select>
+                    <select class="daily-med-hours col-span-2 border border-slate-300 rounded-lg p-2" onchange="app.updateDailyMedicineHours()"><option value="8">8 ساعات</option><option value="12" selected>12 ساعة</option><option value="24">24 ساعة</option></select>
+                    <button type="button" class="col-span-1 text-rose-600 font-black" title="حذف" onclick="this.parentElement.remove();app.updateDailyMedicineHours()">×</button>`;
+                wrap.appendChild(row);
+                this.updateDailyMedicineHours();
+            }
+
+            updateDailyMedicineHours() {
+                const total = Array.from(document.querySelectorAll('#dailyMedicineRows .daily-med-hours')).reduce((sum, el, i) => {
+                    const name = document.querySelectorAll('#dailyMedicineRows .daily-med-name')[i]?.value.trim();
+                    const qty = Number(document.querySelectorAll('#dailyMedicineRows .daily-med-qty')[i]?.value) || 0;
+                    return sum + (name && qty > 0 ? Number(el.value) || 0 : 0);
+                }, 0);
+                const target = document.getElementById('dlTotalMedicineHours');
+                if (target) target.textContent = `${total} ساعة إجماليًا`;
+            }
+
+            updateDailyEstimates() {
+                const flockId = document.getElementById('dlFlockSelect')?.value;
+                const flock = this.state.flocks.find(f => f.id === flockId);
+                const date = document.getElementById('dlDate')?.value;
+                const age = Number(document.getElementById('dlAge')?.value) || 1;
+                const mortality = Number(document.getElementById('dlMortality')?.value) || 0;
+                const prevLogs = this.state.dailyLogs.filter(l => l.flockId === flockId && (!date || l.date < date)).sort((a,b)=>a.date.localeCompare(b.date));
+                const deadBefore = prevLogs.reduce((sum,l)=>sum+(Number(l.mortality)||0),0);
+                const remaining = Math.max(0, (Number(flock?.initialCount)||0) - deadBefore - mortality);
+                const recent = prevLogs.slice(-3);
+                const recordedFeedPerBird = recent.length ? recent.reduce((sum,l)=>sum + ((Number(l.feed)||0) * 24 / (Number(l.hours)||24)) / Math.max(1, Number(l.remaining)||((Number(flock?.initialCount)||0)-deadBefore)),0) / recent.length : 0;
+                // Ross/Aviagen planning reference, approximate daily feed grams per bird by age; interpolate from weekly guideposts.
+                const guide = [[1,15],[7,19],[14,51],[21,90],[28,128],[35,182],[42,217],[45,225]];
+                let grams = guide[guide.length-1][1];
+                for (let i=1;i<guide.length;i++) { if (age <= guide[i][0]) { const [a0,g0]=guide[i-1], [a1,g1]=guide[i]; grams=g0+(g1-g0)*(age-a0)/(a1-a0); break; } }
+                const standardFeed = remaining * grams / 1000;
+                const fullDayFeed = recent.length ? (recordedFeedPerBird > 0 ? Math.min(standardFeed*1.25, Math.max(standardFeed*0.5, recordedFeedPerBird*remaining)) : standardFeed) : standardFeed;
+                const hours = 24;
+                const expectedFeed = fullDayFeed;
+                const farm = flock ? this.state.farms.find(f=>f.id===flock.farmId) : null;
+                const temp = Number(farm?.dailyTemperature?.[date || new Date().toISOString().slice(0,10)]);
+                const tempFactor = Number.isFinite(temp) && temp > 21 ? 1 + (temp-21)*0.065 : 1;
+                const expectedWater = expectedFeed * 1.7 * tempFactor;
+                const fmt = n => Number(n||0).toLocaleString('en-US',{maximumFractionDigits:1});
+                const rem = document.getElementById('dlRemainingPreview'); if(rem) rem.textContent = `الكتاكيت المتبقية بعد النافق المتوقع: ${fmt(remaining)} طائر`;
+                const fe = document.getElementById('dlFeedEstimate'); if(fe) fe.textContent = `العلف المتوقع خلال ${hours} ساعة: ${fmt(expectedFeed)} كجم (مرجع يوم كامل: ${fmt(fullDayFeed)} كجم)`;
+                const we = document.getElementById('dlWaterEstimate'); if(we) we.textContent = `المياه المتوقعة خلال ${hours} ساعة: ${fmt(expectedWater)} لتر`;
+            }
+
+            saveDailyLog(e) {
+                e.preventDefault();
+                const flockId = document.getElementById('dlFlockSelect').value;
+                const date = document.getElementById('dlDate').value;
+                const age = Number(document.getElementById('dlAge').value);
+                const mortality = Number(document.getElementById('dlMortality').value);
+                const feed = Number(document.getElementById('dlFeed').value);
+                const water = Number(document.getElementById('dlWater').value);
+                const weight = Number(document.getElementById('dlWeight').value);
+                const hours = Array.from(document.querySelectorAll('#dailyMedicineRows .daily-med-hours')).reduce((sum,el,i)=> { const name=document.querySelectorAll('#dailyMedicineRows .daily-med-name')[i]?.value.trim(); const qty=Number(document.querySelectorAll('#dailyMedicineRows .daily-med-qty')[i]?.value)||0; return sum+(name&&qty>0?(Number(el.value)||0):0); },0);
+                const flock = this.state.flocks.find(f => f.id === flockId);
+                const deadBefore = this.state.dailyLogs.filter(l => l.flockId === flockId && l.date < date).reduce((sum,l)=>sum+(Number(l.mortality)||0),0);
+                const remaining = Math.max(0, (Number(flock?.initialCount)||0) - deadBefore - mortality);
+                const dailyMedicines = Array.from(document.querySelectorAll('#dailyMedicineRows .daily-med-name')).map((el,i)=>({name:el.value.trim(), qty:Number(document.querySelectorAll('#dailyMedicineRows .daily-med-qty')[i]?.value)||0, unit:document.querySelectorAll('#dailyMedicineRows .daily-med-unit')[i]?.value||'لتر', hours:Number(document.querySelectorAll('#dailyMedicineRows .daily-med-hours')[i]?.value)||12})).filter(m=>m.name && m.qty>0);
+                this.state.dailyLogs.unshift({id:'dl_'+Date.now(), flockId, date, age, mortality, remaining, feed, water, weight, hours, dailyMedicines});
+                // Record the medicines administered on this day in the medicines ledger as well.
+                dailyMedicines.forEach((m,i)=>this.state.medicines.unshift({id:`med_daily_${Date.now()}_${i}`,flockId,name:m.name,date,dosage:`${m.qty} ${m.unit} خلال ${m.hours} ساعة`,cost:0,notes:'مسجل من التسجيل اليومي'}));
+                this.saveToStorage(); this.closeModal('dailyModal'); this.renderDailyLogs();
+            }
+
+            deleteDailyLog(id) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.dailyLogs = this.state.dailyLogs.filter(l => l.id !== id);
+                this.saveToStorage();
+                this.renderDailyLogs();
+            }
+
+            // --- PARTNERS & PROFIT DISTRIBUTION ---
+            renderPartnersTab() {
+                const partnerSelect = document.getElementById('partnerFlockSelect');
+                if (!partnerSelect) return;
+
+                const selectedFlockId = partnerSelect.value || (this.state.flocks[0] ? this.state.flocks[0].id : null);
+                const flock = this.state.flocks.find(f => f.id === selectedFlockId);
+
+                const statusBadge = document.getElementById('flockStatusBadge');
+                const btnDistribute = document.getElementById('btnDistributeProfit');
+
+                if (flock) {
+                    if (flock.status === 'مكتملة وموزعة الأرباح') {
+                        statusBadge.innerHTML = `<span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-xl"><i class="fa-solid fa-box-archive ml-1"></i> هذه الدورة مؤرشفة وموزعة أرباحها</span>`;
+                        btnDistribute.style.display = 'none';
+                    } else {
+                        statusBadge.innerHTML = `<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl"><i class="fa-solid fa-spinner ml-1"></i> دورة نشطة قيد التشغيل</span>`;
+                        btnDistribute.style.display = 'flex';
+                    }
+                }
+
+                const flockSales = this.state.sales.filter(s => s.flockId === selectedFlockId).reduce((sum, s) => sum + (Number(s.totalEGP) || 0), 0);
+                const flockExpenses = this.state.expenses.filter(e => e.flockId === selectedFlockId).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+                const netProfit = Math.max(0, flockSales - flockExpenses);
+
+                document.getElementById('partnersNetProfitDisplay').innerText = `${netProfit.toLocaleString()} ج.م`;
+                document.getElementById('partnerProfitFormulaDetails').innerText = `المبيعات (${flockSales.toLocaleString()} ج.م) - المصروفات (${flockExpenses.toLocaleString()} ج.م)`;
+
+                const grid = document.getElementById('partnersCardsGrid');
+                if (!grid) return;
+
+                let sumPercent = 0;
+
+                grid.innerHTML = this.state.partners.map(p => {
+                    sumPercent += Number(p.percent) || 0;
+                    const partnerShare = (netProfit * (Number(p.percent) || 0)) / 100;
+
+                    return `
+                        <div class="bg-white border border-slate-200/90 p-4.5 rounded-3xl shadow-xs space-y-3">
+                            <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                <span class="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-xl bg-farmGreen-100 text-farmGreen-700 flex items-center justify-center font-black text-xs">
+                                        #${p.id}
+                                    </div>
+                                    ${p.name}
+                                </span>
+                                <span class="bg-amber-100 text-amber-800 text-xs font-black px-2.5 py-1 rounded-xl">
+                                    ${p.percent}%
+                                </span>
+                            </div>
+
+                            <div class="pt-1">
+                                <span class="text-[11px] font-bold text-slate-400 block">حصة الشريك من أرباح هذه الدورة:</span>
+                                <span class="text-xl font-black text-emerald-700 mt-0.5 block">${partnerShare.toLocaleString()} ج.م</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                document.getElementById('totalPercentSum').innerText = `${sumPercent}%`;
+                const valMsg = document.getElementById('percentValidationMsg');
+                if (sumPercent === 100) {
+                    valMsg.className = 'font-extrabold text-emerald-700';
+                    valMsg.innerHTML = '<i class="fa-solid fa-circle-check"></i> مجموع النسب مكتمل 100%';
+                } else {
+                    valMsg.className = 'font-extrabold text-rose-600';
+                    valMsg.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> إجمالي النسب يجب أن يساوي 100%';
+                }
+            }
+
+            settleAndArchiveFlock() {
+                const partnerSelect = document.getElementById('partnerFlockSelect');
+                if (!partnerSelect) return;
+
+                const selectedFlockId = partnerSelect.value;
+                const flock = this.state.flocks.find(f => f.id === selectedFlockId);
+
+                if (!flock) return;
+
+                flock.status = 'مكتملة وموزعة الأرباح';
+                this.saveToStorage();
+                this.renderPartnersTab();
+                this.showNotice('تم توزيع أرباح الدورة بنجاح وأرشفتها!');
+            }
+
+            openPartnersModal() {
+                const container = document.getElementById('partnerFormFields');
+                if (!container) return;
+
+                container.innerHTML = this.state.partners.map((p, idx) => `
+                    <div class="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80 items-center">
+                        <div class="col-span-2">
+                            <label class="block font-bold text-slate-600 mb-0.5">اسم الشريك ${idx + 1}</label>
+                            <input type="text" id="partnerName_${p.id}" value="${p.name}" class="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-600 mb-0.5">النسبة (%)</label>
+                            <input type="number" id="partnerPercent_${p.id}" value="${p.percent}" min="0" max="100" class="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-center focus:outline-none">
+                        </div>
+                    </div>
+                `).join('');
+
+                this.openModal('partnerModal');
+            }
+
+            savePartnersData(e) {
+                e.preventDefault();
+                let sum = 0;
+                const updated = this.state.partners.map(p => {
+                    const name = document.getElementById(`partnerName_${p.id}`).value;
+                    const percent = Number(document.getElementById(`partnerPercent_${p.id}`).value) || 0;
+                    sum += percent;
+                    return { id: p.id, name, percent };
+                });
+
+                this.state.partners = updated;
+                this.saveToStorage();
+                this.closeModal('partnerModal');
+                this.renderPartnersTab();
+            }
+
+            // --- USERS & PERMISSIONS MANAGEMENT ---
+            renderUsers() {
+                const body = document.getElementById('usersTableBody');
+                if (!body) return;
+
+                body.innerHTML = this.state.users.map(u => `
+                    <tr class="hover:bg-slate-50/80">
+                        <td class="p-3.5 font-bold text-slate-800 flex items-center gap-2">
+                            <div class="w-7 h-7 rounded-lg bg-farmGreen-100 text-farmGreen-800 font-black flex items-center justify-center text-xs">
+                                ${u.name.charAt(0)}
+                            </div>
+                            ${u.name}
+                        </td>
+                        <td class="p-3.5 text-slate-600 font-mono">${u.phone}</td>
+                        <td class="p-3.5">
+                            <span class="px-2.5 py-1 rounded-lg text-[10px] font-black ${
+                                u.role === 'admin' 
+                                ? 'bg-purple-100 text-purple-800' 
+                                : u.role === 'manager' 
+                                ? 'bg-blue-100 text-blue-800' 
+                                : 'bg-slate-100 text-slate-700'
+                            }">
+                                ${u.role === 'admin' ? 'مدير عام' : u.role === 'deputy' ? 'نائب مدير' : u.role === 'manager' ? 'مدير عنبر / مشرف' : 'عامل'}
+                            </span>
+                        </td>
+                        <td class="p-3.5 text-slate-500">
+                            ${u.role === 'admin' ? 'صلاحيات كاملة شاملة' : u.role === 'deputy' ? 'صلاحيات المدير للمزرعة: ' + (this.state.farms.find(f=>f.id===u.farmId)?.name || 'غير محددة') : 'صلاحيات مخصصة حسب القسم'}
+                        </td>
+                        <td class="p-3.5 text-center">
+                            ${u.id !== 'u_admin' ? `
+                                <button onclick="app.deleteUser('${u.id}')" class="text-slate-300 hover:text-rose-600 transition"><i class="fa-solid fa-trash-can"></i></button>
+                            ` : '<span class="text-[10px] text-slate-400">حساب رئيسي</span>'}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            openUserModal() {
+                this.renderPermissionsMatrixControls();
+                const farmWrap = document.getElementById('deputyFarmWrap');
+                const farmSelect = document.getElementById('deputyFarmSelect');
+                farmSelect.innerHTML = this.state.farms.map(f => `<option value="${f.id}">${this.escapeHtml(f.name)}</option>`).join('');
+                document.getElementById('userRoleSelect').onchange = () => {
+                    const deputy = document.getElementById('userRoleSelect').value === 'deputy';
+                    farmWrap.classList.toggle('hidden', !deputy);
+                    document.getElementById('permissionsListControls').classList.toggle('hidden', deputy || document.getElementById('userRoleSelect').value === 'admin');
+                };
+                farmWrap.classList.add('hidden');
+                document.getElementById('permissionsListControls').classList.remove('hidden');
+                this.openModal('userModal');
+            }
+
+            renderPermissionsMatrixControls() {
+                const container = document.getElementById('permissionsListControls');
+                if (!container) return;
+
+                container.innerHTML = this.state.sections.map(sec => `
+                    <div class="flex items-center justify-between bg-white border border-slate-200/80 p-2 rounded-xl text-xs">
+                        <span class="font-bold text-slate-700 flex items-center gap-1.5">
+                            <i class="fa-solid ${sec.icon} text-farmGreen-600"></i> ${sec.title}
+                        </span>
+                        <select data-sec="${sec.id}" class="perm-select text-xs bg-slate-50 border border-slate-200 rounded-lg p-1 font-semibold focus:outline-none">
+                            <option value="none">لا يمكنه الرؤية (محظور)</option>
+                            <option value="read">مشاهدة فقط</option>
+                            <option value="write" selected>قراءة وإضافة وتعديل</option>
+                        </select>
+                    </div>
+                `).join('');
+            }
+
+            saveUser(e) {
+                e.preventDefault();
+                if (!this.requireAdminMutation("إدارة المستخدمين والصلاحيات")) return;
+                const name = document.getElementById('userNameInput').value;
+                const phone = document.getElementById('userPhoneInput').value;
+                const role = document.getElementById('userRoleSelect').value;
+                const pass = document.getElementById('userPassInput').value;
+
+                const permissions = {};
+                if (role === 'admin' || role === 'deputy') {
+                    permissions['all'] = 'full';
+                } else {
+                    document.querySelectorAll('.perm-select').forEach(sel => {
+                        permissions[sel.dataset.sec] = sel.value;
+                    });
+                }
+
+                this.state.users.push({
+                    id: 'u_' + Date.now(),
+                    name, phone, role, pass, permissions, ...(role === 'deputy' ? { farmId: document.getElementById('deputyFarmSelect').value } : {})
+                });
+
+                this.saveToStorage();
+                this.closeModal('userModal');
+            }
+
+            deleteUser(id) {
+                if (!this.requireAdminMutation("حذف البيانات")) return;
+                this.state.users = this.state.users.filter(u => u.id !== id);
+                this.saveToStorage();
+            }
+
+            applyAuthenticatedProfile(profile) {
+                const rawRole = String(profile.role || '').trim().toLowerCase()
+                    .replace(/[ًٌٍَُِّْـ]/g, '')
+                    .replace(/[أإآ]/g, 'ا')
+                    .replace(/[\s\-\/\(\)]+/g, '_')
+                    .replace(/_+/g, '_').replace(/^_|_$/g, '');
+                const roleMap = {
+                    admin: 'admin', administrator: 'admin', super_admin: 'admin', owner: 'admin', manager: 'admin',
+                    general_manager: 'admin', generalmanager: 'admin', system_admin: 'admin', farm_owner: 'admin',
+                    'مدير': 'admin', 'مدير_عام': 'admin', 'مدير_عام_النظام': 'admin', 'المدير_العام': 'admin',
+                    'المدير_العام_للنظام': 'admin', 'مدير_النظام': 'admin', 'مدير_المزرعة': 'admin',
+                    deputy: 'deputy', deputy_manager: 'deputy', 'نائب_مدير': 'deputy', 'نائب_المدير': 'deputy',
+                    supervisor: 'supervisor', farm_supervisor: 'supervisor', 'مشرف': 'supervisor', 'مشرف_مزرعة': 'supervisor',
+                    worker: 'worker', employee: 'worker', 'عامل': 'worker',
+                    storekeeper: 'storekeeper', store_keeper: 'storekeeper', 'أمين_مخزن': 'storekeeper', 'امين_مخزن': 'storekeeper',
+                    accountant: 'accountant', 'محاسب': 'accountant'
+                };
+                // Accept common Arabic/English variants from the Supabase profiles table.
+                let mappedRole = roleMap[rawRole];
+                if (!mappedRole && (rawRole.includes('admin') || rawRole.includes('مدير_عام') || rawRole.includes('المدير_العام') || rawRole.includes('مدير_النظام') || rawRole.includes('مدير_عام_النظام'))) mappedRole = 'admin';
+                // Arabic role labels sometimes contain extra text such as '(صلاحيات كاملة)'.
+                // Recognize a general/system manager, but do not promote deputy/supervisor/barn manager.
+                if (!mappedRole && rawRole.includes('مدير') && !rawRole.includes('نائب') && !rawRole.includes('مشرف') && !rawRole.includes('عنبر') && !rawRole.includes('مساعد')) mappedRole = 'admin';
+                if (!mappedRole && (rawRole.includes('deputy') || rawRole.includes('نائب'))) mappedRole = 'deputy';
+                if (!mappedRole && (rawRole.includes('supervisor') || rawRole.includes('مشرف') || rawRole.includes('عنبر'))) mappedRole = 'supervisor';
+                if (!mappedRole && (rawRole.includes('store') || rawRole.includes('مخزن'))) mappedRole = 'storekeeper';
+                if (!mappedRole && rawRole.includes('محاسب')) mappedRole = 'accountant';
+                mappedRole = mappedRole || 'worker';
+                // Keep the normalized role for cloud scoping as well as the UI.
+                authenticatedProfile = { ...profile, role: mappedRole };
+                this.currentUser = { id: profile.id, name: profile.full_name || 'مستخدم', role: mappedRole, farmId: profile.farm_id, permissions: {} };
+                console.info('[Poultry app] authenticated role:', profile.role, '=>', mappedRole);
+                document.getElementById('currentUserName').innerText = this.currentUser.name;
+                // Never let the local demo account list act as an authentication mechanism.
+                this.state.users = [this.currentUser];
+                this.renderAll();
+                this.backToMainHub();
+                this.startCloudRealtime();
+                this.loadCloudState().catch(e => this.setCloudStatus('تعذر تحميل البيانات السحابية: ' + (e.message || e)));
+                clearTimeout(cloudSyncTimer);
+                cloudSyncTimer = setTimeout(() => this.saveCloudState().catch(e => this.setCloudStatus('فشل الحفظ التلقائي: ' + (e.message || e))), 1200);
+            }
+
+            async signOut() {
+                const { error } = await supabaseClient.auth.signOut();
+                if (error) { this.showNotice('تعذر تسجيل الخروج: ' + error.message); return; }
+                this.currentUser = null; authenticatedProfile = null;
+                if (cloudRealtimeChannel) { supabaseClient.removeChannel(cloudRealtimeChannel); cloudRealtimeChannel = null; }
+                const password = document.getElementById('authPassword');
+                if (password) password.value = '';
+                const gate = document.getElementById('authGate');
+                if (gate) { gate.classList.remove('hidden'); gate.style.display = 'flex'; gate.style.visibility = 'visible'; gate.style.opacity = '1'; gate.style.zIndex = '99999'; }
+            }
+
+            openUserSwitchModal() {
+                const list = document.getElementById('usersSwitchList');
+                if (!list) return;
+
+                list.innerHTML = this.state.users.map(u => `
+                    <div onclick="app.switchCurrentUser('${u.id}')" 
+                         class="p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+                             this.currentUser.id === u.id ? 'bg-farmGreen-50 border-farmGreen-400' : 'bg-slate-50 border-slate-200 hover:bg-white'
+                         }">
+                        <div>
+                            <span class="font-bold text-xs text-slate-800 block">${u.name}</span>
+                            <span class="text-[10px] text-slate-400 block">${u.role === 'admin' ? 'مدير عام' : u.role === 'deputy' ? 'نائب مدير - ' + (this.state.farms.find(f=>f.id===u.farmId)?.name || 'مزرعة غير محددة') : 'مستخدم مخصص'}</span>
+                        </div>
+                        ${this.currentUser.id === u.id ? '<i class="fa-solid fa-circle-check text-farmGreen-600"></i>' : ''}
+                    </div>
+                `).join('');
+
+                this.openModal('userSwitchModal');
+            }
+
+            switchCurrentUser(userId) {
+                const target = this.state.users.find(u => u.id === userId);
+                if (target) {
+                    this.currentUser = target;
+                    document.getElementById('currentUserName').innerText = target.name;
+                    this.closeModal('userSwitchModal');
+                    this.backToMainHub();
+                    this.renderAll();
+                }
+            }
+
+            renderSectionsEditorList() {
+                const container = document.getElementById('editableSectionsList');
+                if (!container) return;
+
+                container.innerHTML = this.state.sections.map((sec, index) => `
+                    <div class="bg-slate-50 border border-slate-200/80 p-3 rounded-2xl flex flex-wrap sm:flex-nowrap items-center gap-2">
+                        <div class="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-farmGreen-700 text-base shrink-0 shadow-xs">
+                            <i class="fa-solid ${sec.icon}"></i>
+                        </div>
+                        <div class="flex-1 min-w-[120px]">
+                            <label class="text-[10px] text-slate-400 font-bold block">اسم القسم:</label>
+                            <input type="text" value="${sec.title}" onchange="app.updateSectionTitle(${index}, this.value)" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800">
+                        </div>
+                        <div class="w-36 shrink-0">
+                            <label class="text-[10px] text-slate-400 font-bold block">رمز الأيقونة (FontAwesome):</label>
+                            <input type="text" value="${sec.icon}" onchange="app.updateSectionIcon(${index}, this.value)" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600">
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updateSectionTitle(index, val) { if (val.trim()) { this.state.sections[index].title = val.trim(); this.saveToStorage(); } }
+            updateSectionIcon(index, val) { if (val.trim()) { this.state.sections[index].icon = val.trim(); this.saveToStorage(); } }
+            resetSectionsToDefault() { this.state.sections = JSON.parse(JSON.stringify(this.defaultSections)); this.saveToStorage(); this.renderSectionsEditorList(); }
+
+            openCustomSectionsModal() { this.renderSectionsEditorList(); this.openModal('customSectionsModal'); }
+            openImportExportModal() { this.openModal('importExportModal'); }
+
+            exportDataJSON() {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.state, null, 2));
+                const downloadAnchor = document.createElement('a');
+                downloadAnchor.setAttribute("href", dataStr);
+                downloadAnchor.setAttribute("download", `poultry_farm_backup_${new Date().toISOString().split('T')[0]}.json`);
+                document.body.appendChild(downloadAnchor);
+                downloadAnchor.click();
+                downloadAnchor.remove();
+            }
+
+            importDataJSON() {
+                const fileInput = document.getElementById('importFileInput');
+                if (!fileInput.files.length) return this.showNotice('يرجى اختيار ملف JSON للاستيراد');
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        this.state = JSON.parse(e.target.result);
+                        this.saveToStorage();
+                        this.closeModal('importExportModal');
+                        this.showNotice('تم استيراد كافة البيانات بنجاح!');
+                    } catch (err) { this.showNotice('الملف المختار غير صالح'); }
+                };
+                reader.readAsText(fileInput.files[0]);
+            }
+
+            openModal(id) { document.getElementById(id)?.classList.remove('hidden'); }
+            closeModal(id) { document.getElementById(id)?.classList.add('hidden'); }
+
+            renderAll() {
+                this.populateFlockSelectors();
+                this.renderMainHubGrid();
+                this.renderDashboardStats();
+                this.refreshFarmWeather(false);
+                this.refreshPoultryPrice(false);
+                this.renderFarms();
+                this.renderFlocks();
+                this.renderUsers();
+                this.renderInventory();
+                this.renderMedicines();
+                this.renderSales();
+                this.renderWorkers();
+                this.renderExpenses();
+            }
+        }
+
+        let app;
+        window.onload = () => { app = new PoultryFarmApp(); if (authenticatedProfile) app.applyAuthenticatedProfile(authenticatedProfile); };
+    </script>
+<script>
+    // PWA install support. Service worker requires HTTPS hosting (or localhost).
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(err => console.warn('Service worker registration failed:', err)));
+    }
+</script>
+</body>
+</html>
